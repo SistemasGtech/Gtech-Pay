@@ -1,0 +1,15 @@
+{
+  "name": "gtech-pdv",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "pdv": "npm run dev -w @gtech/pdv",
+    "dashboard": "npm run dev -w @gtech/dashboard",
+    "pdv:build": "npm run build -w @gtech/pdv",
+    "dashboard:build": "npm run build -w @gtech/dashboard",
+    "pdv:android": "npm run cap:sync -w @gtech/pdv && npm run cap:open:android -w @gtech/pdv"
+  }
+}
