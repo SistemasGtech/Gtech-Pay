@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Gtech - automatização | App de Vendas (PDV)</title>
+  
+  <!-- Configurações para Aplicativo Nativo (PWA Standalone) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="application-name" content="Gtech PDV">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts - Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- React & Babel via CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 999px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    /* ESTILOS DE IMPRESSÃO TÉRMICA TIPO 2 VIAS (SEM APPS SECUNDÁRIOS) */
+    @media print {
+      @page {
+        margin: 0;
+        size: auto;
+      }
+      body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      #root {
+        display: none !important;
+      }
+      #thermal-receipt-print-area {
+        display: block !important;
+        margin: 0 auto;
+        padding: 4mm;
+        font-family: 'Courier New', Courier, monospace;
+        color: #000;
+        background: #fff;
+      }
+    }
+    @media screen {
+      #thermal-receipt-print-area {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body class="text-slate-100 antialiased h-screen overflow-hidden">
+  <div id="root" class="h-full"></div>
+
+  <!-- ÁREA EXCLUSIVA PARA IMPRESSÃO TÉRMICA NATIVA DO NAVEGADOR -->
+  <div id="thermal-receipt-print-area"></div>
+
+  <!-- FIREBASE ES MODULES PARA SINCRONIZAÇÃO EM TEMPO REAL -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'gtech-pdv-sync';
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+      apiKey: "demo-key",
+      authDomain: "demo.firebaseapp.com",
+      projectId: "demo-project",
+      storageBucket: "demo.appspot.com",
+      messagingSenderId: "123456",
+      appId: "1:123456:web:123456"
+    };
+
+    let db, auth;
+    try {
+      const app = initializeApp(firebaseConfig);
+      db = getFirestore(app);
+      auth = getAuth(app);
+    } catch (e) {
+      console.warn("Nuvem em modo local/fallback:", e);
+    }
+
+    window.SyncService = {
+      appId,
+      db,
+      auth,
+      initAuth: async (onUserReady) => {
+        try {
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            const res = await signInWithCustomToken(auth, __initial_auth_token);
+            onUserReady(res.user);
+          } else {
+            const res = await signInAnonymously(auth);
+            onUserReady(res.user);
+          }
+        } catch (e) {
+          console.warn("Auth fallback:", e);
+          onUserReady(null);
+        }
+      },
+      subscribe: (colName, callback, errorCb) => {
+        if (!db) return () => {};
+        const colRef = collection(db, 'artifacts', appId, 'public', 'data', colName);
+        return onSnapshot(colRef, (snapshot) => {
+          const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          callback(list);
+        }, (err) => {
+          console.error(`Erro na sincronização de ${colName}:`, err);
+          if (errorCb) errorCb(err);
+        });
+      },
+      saveDoc: async (colName, docId, data) => {
+        if (!db) return;
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', colName, String(docId));
+        return await setDoc(docRef, data, { merge: true });
+      },
+      deleteDoc: async (colName, docId) => {
+        if (!db) return;
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', colName, String(docId));
+        return await deleteDoc(docRef);
+      }
+    };
+  </script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    // --- ÍCONES SVG INLINE ---
+    const IconStore = () => (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5m0 0h4m-4 0V11m0 0h4m-4 0H9m4 0V7m0 0h4m-4 0H9" />
+      </svg>
+    );
+
+    const IconShoppingBag = () => (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+      </svg>
+    );
+
+    const IconList = () => (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+    );
+
+    const IconGrid = () => (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+      </svg>
+    );
+
+    const IconPlus = () => (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+      </svg>
+    );
+
+    const IconTrash = () => (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+      </svg>
+    );
+
+    const IconSearch = () => (
+      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+    );
+
+    const IconCheck = () => (
+      <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+      </svg>
+    );
+
+    const IconPrinter = () => (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+      </svg>
+    );
+
+    const IconClose = () => (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    );
+
+    const IconReceipt = () => (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    );
+
+    const IconSettings = () => (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    );
+
+    // --- DADOS PADRÃO ---
+    const OPERADORES_PADRAO = [
+      { id: '1', nome: 'João Silva', cargo: 'Gerente / Admin', pin: '1234', email: 'gerente@doceria.com', cor: '#6366f1', iniciais: 'JS' },
+      { id: '2', nome: 'Maria Souza', cargo: 'Operador de Caixa', pin: '0000', email: 'caixa@doceria.com', cor: '#10b981', iniciais: 'MS' },
+      { id: '3', nome: 'Pedro Alves', cargo: 'Atendente Balcão', pin: '1111', email: 'atendente@doceria.com', cor: '#f59e0b', iniciais: 'PA' }
+    ];
+
+    const CATEGORIAS_PADRAO = [
+      { id: '1', nome: 'Churros Tradicionais', cor: '#f59e0b' },
+      { id: '2', nome: 'Churros Gourmet', cor: '#ec4899' },
+      { id: '3', nome: 'Bebidas Geladas', cor: '#3b82f6' },
+      { id: '4', nome: 'Combos Especiais', cor: '#10b981' }
+    ];
+
+    const COMPLEMENTOS_PADRAO = [
+      {
+        id: '201',
+        nome: 'Escolha da Massa',
+        obrigatorio: true,
+        opcoes: [
+          { id: '301', nome: 'Massa Tradicional Crocante', preco: 0.00 },
+          { id: '302', nome: 'Massa de Chocolate', preco: 2.00 }
+        ]
+      },
+      {
+        id: '202',
+        nome: 'Ponto do Churros',
+        obrigatorio: false,
+        opcoes: [
+          { id: '303', nome: 'Bem Passado / Extra Crocante', preco: 0.00 }
+        ]
+      },
+      {
+        id: '203',
+        nome: 'Caldas & Adicionais Extras',
+        obrigatorio: false,
+        opcoes: [
+          { id: '305', nome: 'Calda de Leite Ninho Extra', preco: 3.50 },
+          { id: '306', nome: 'Nutella Extra no Copo', preco: 4.50 }
+        ]
+      }
+    ];
+
+    const PRODUTOS_PADRAO = [
+      { id: '101', nome: 'A1 - CHURROS DOCE DE LEITE TRADICIONAL', categoriaId: '1', preco: 12.00, ativo: true, complementoIds: ['201', '202'] },
+      { id: '102', nome: 'A2 - CHURROS NUTELLA COM MORANGO', categoriaId: '2', preco: 16.50, ativo: true, complementoIds: ['201', '203'] },
+      { id: '103', nome: 'A3 - CHURROS KINDER BUENO SUPREME', categoriaId: '2', preco: 19.00, ativo: true, complementoIds: ['201', '203'] },
+      { id: '104', nome: 'B1 - COCA-COLA LATA 350ML GELADA', categoriaId: '3', preco: 6.00, ativo: true, complementoIds: [] },
+      { id: '105', nome: 'B2 - ÁGUA MINERAL SEM GÁS 500ML', categoriaId: '3', preco: 4.00, ativo: true, complementoIds: [] },
+      { id: '106', nome: 'C1 - COMBO DUO GOURMET (2 CHURROS + 1 BEBIDA)', categoriaId: '4', preco: 34.00, ativo: true, complementoIds: ['201', '203'] }
+    ];
+
+    function App() {
+      // --- SINCRONIZAÇÃO EM TEMPO REAL ---
+      const [sincronizado, setSincronizado] = useState(false);
+
+      // --- ESTADOS DE SESSÃO & AUTENTICAÇÃO ---
+      const [usuarioLogado, setUsuarioLogado] = useState(null);
+      const [operadores, setOperadores] = useState(OPERADORES_PADRAO);
+      const [operadorSelecionado, setOperadorSelecionado] = useState(null);
+      const [pinInput, setPinInput] = useState('');
+      const [modoLogin, setModoLogin] = useState('pin');
+      const [emailInput, setEmailInput] = useState('');
+      const [senhaInput, setSenhaInput] = useState('');
+      const [erroLogin, setErroLogin] = useState('');
+
+      const [categorias, setCategorias] = useState(CATEGORIAS_PADRAO);
+      const [produtos, setProdutos] = useState(PRODUTOS_PADRAO);
+      const [complementos, setComplementos] = useState(COMPLEMENTOS_PADRAO);
+
+      const [lojaInfo, setLojaInfo] = useState({
+        nome: 'DOCERIA & CHURROS TRADICIONAL',
+        endereco: 'Av. Brasil, 1500 - Centro',
+        telefone: '(11) 98765-4321',
+        cnpj: '12.345.678/0001-90'
+      });
+
+      const [abaMenuTop, setAbaMenuTop] = useState('vendas');
+      const [historicoVendas, setHistoricoVendas] = useState([]);
+
+      const [configImpressora, setConfigImpressora] = useState(() => {
+        const savedConfig = localStorage.getItem('gtech_printer_config');
+        return savedConfig ? JSON.parse(savedConfig) : {
+          nome: 'Impressora Padrão do Sistema',
+          tipoConexao: 'Navegador/Spooler',
+          larguraPapel: '80mm',
+          imprimirAutomatico: true
+        };
+      });
+
+      const [toast, setToast] = useState(null);
+      const [buscaRecibo, setBuscaRecibo] = useState('');
+      const [categoriaSelecionada, setCategoriaSelecionada] = useState('todas');
+      const [termoBusca, setTermoBusca] = useState('');
+      const [modoExibicao, setModoExibicao] = useState('lista');
+      
+      const [carrinho, setCarrinho] = useState([]);
+      const [clienteNome, setClienteNome] = useState('');
+      const [senhaNumero, setSenhaNumero] = useState(1);
+      const [formaPagamento, setFormaPagamento] = useState('PIX');
+      const [valorRecebidoDinheiro, setValorRecebidoDinheiro] = useState('');
+
+      const [itemModal, setItemModal] = useState(null);
+      const [qtdModal, setQtdModal] = useState(1);
+      const [observacaoModal, setObservacaoModal] = useState('');
+      const [opcoesSelecionadasModal, setOpcoesSelecionadasModal] = useState([]);
+      const [erroObrigatorioModal, setErroObrigatorioModal] = useState(null);
+
+      const [comandaConcluidaModal, setComandaConcluidaModal] = useState(null);
+      const [abaViaModal, setAbaViaModal] = useState('producao');
+
+      // --- ESCUTA A NUVEM EM TEMPO REAL ---
+      useEffect(() => {
+        if (window.SyncService) {
+          window.SyncService.initAuth(() => {
+            setSincronizado(true);
+
+            window.SyncService.subscribe('categorias', (data) => {
+              if (data && data.length > 0) setCategorias(data);
+              else CATEGORIAS_PADRAO.forEach(c => window.SyncService.saveDoc('categorias', c.id, c));
+            });
+
+            window.SyncService.subscribe('complementos', (data) => {
+              if (data && data.length > 0) setComplementos(data);
+              else COMPLEMENTOS_PADRAO.forEach(c => window.SyncService.saveDoc('complementos', c.id, c));
+            });
+
+            window.SyncService.subscribe('produtos', (data) => {
+              if (data && data.length > 0) setProdutos(data);
+              else PRODUTOS_PADRAO.forEach(p => window.SyncService.saveDoc('produtos', p.id, p));
+            });
+
+            window.SyncService.subscribe('operadores', (data) => {
+              if (data && data.length > 0) setOperadores(data);
+              else OPERADORES_PADRAO.forEach(o => window.SyncService.saveDoc('operadores', o.id, o));
+            });
+
+            window.SyncService.subscribe('vendas', (data) => {
+              if (data) {
+                const ordenadas = [...data].sort((a, b) => (b.timestamp || b.id) - (a.timestamp || a.id));
+                setHistoricoVendas(ordenadas);
+              }
+            });
+
+            window.SyncService.subscribe('lojaInfo', (data) => {
+              if (data && data.length > 0) setLojaInfo(data[0]);
+              else window.SyncService.saveDoc('lojaInfo', 'principal', lojaInfo);
+            });
+          });
+        }
+      }, []);
+
+      const mostrarToast = (mensagem, tipo = 'sucesso') => {
+        setToast({ mensagem, tipo });
+        setTimeout(() => setToast(null), 3000);
+      };
+
+      // --- LOGIN E TECLADO PIN ---
+      const handleSelecionarOperadorPin = (op) => {
+        setOperadorSelecionado(op);
+        setPinInput('');
+        setErroLogin('');
+      };
+
+      const handlePressTecladoPin = (num) => {
+        setErroLogin('');
+        if (pinInput.length < 4) {
+          const novoPin = pinInput + num;
+          setPinInput(novoPin);
+          if (novoPin.length === 4 && operadorSelecionado) {
+            if (operadorSelecionado.pin === novoPin) {
+              setUsuarioLogado(operadorSelecionado);
+              setOperadorSelecionado(null);
+              setPinInput('');
+              mostrarToast(`👋 Bem-vindo(a), ${operadorSelecionado.nome}!`);
+            } else {
+              setErroLogin('PIN incorreto! Tente novamente.');
+              setPinInput('');
+            }
+          }
+        }
+      };
+
+      const handleApagarPin = () => {
+        setPinInput(prev => prev.slice(0, -1));
+        setErroLogin('');
+      };
+
+      const handleLoginEmail = (e) => {
+        e.preventDefault();
+        setErroLogin('');
+        const op = operadores.find(o => o.email?.toLowerCase() === emailInput.trim().toLowerCase());
+        if (op) {
+          setUsuarioLogado(op);
+          setEmailInput('');
+          setSenhaInput('');
+          mostrarToast(`👋 Bem-vindo(a), ${op.nome}!`);
+        } else {
+          setErroLogin('E-mail ou senha incorretos.');
+        }
+      };
+
+      const handleLogout = () => {
+        setUsuarioLogado(null);
+        setOperadorSelecionado(null);
+        setPinInput('');
+        mostrarToast('🔒 Caixa bloqueado.', 'alerta');
+      };
+
+      // --- CÁLCULOS E FILTROS ---
+      const produtosFiltrados = useMemo(() => {
+        return produtos.filter(prod => {
+          if (!prod.ativo) return false;
+          if (categoriaSelecionada !== 'todas' && String(prod.categoriaId) !== categoriaSelecionada) return false;
+          if (termoBusca.trim() && !prod.nome.toLowerCase().includes(termoBusca.toLowerCase())) return false;
+          return true;
+        });
+      }, [produtos, categoriaSelecionada, termoBusca]);
+
+      const totalCarrinho = useMemo(() => {
+        return carrinho.reduce((sum, item) => sum + item.subtotal, 0);
+      }, [carrinho]);
+
+      const valorTroco = useMemo(() => {
+        if (formaPagamento !== 'Dinheiro') return 0;
+        const rec = parseFloat(valorRecebidoDinheiro) || 0;
+        return Math.max(0, rec - totalCarrinho);
+      }, [formaPagamento, valorRecebidoDinheiro, totalCarrinho]);
+
+      const complementosDoItemModal = useMemo(() => {
+        if (!itemModal) return [];
+        const compIds = itemModal.complementoIds || [];
+        return complementos.filter(c => compIds.includes(String(c.id)));
+      }, [itemModal, complementos]);
+
+      const precoUnitarioCalculadoModal = useMemo(() => {
+        if (!itemModal) return 0;
+        let extra = 0;
+        opcoesSelecionadasModal.forEach(opcId => {
+          complementosDoItemModal.forEach(comp => {
+            const opc = comp.opcoes?.find(o => String(o.id) === String(opcId));
+            if (opc) extra += Number(opc.preco || 0);
+          });
+        });
+        return Number(itemModal.preco || 0) + extra;
+      }, [itemModal, opcoesSelecionadasModal, complementosDoItemModal]);
+
+      // --- MANIPULAÇÃO DE CARRINHO ---
+      const handleAbrirItem = (prod) => {
+        setItemModal(prod);
+        setQtdModal(1);
+        setObservacaoModal('');
+        setErroObrigatorioModal(null);
+        const opcsIniciais = [];
+        const comps = complementos.filter(c => (prod.complementoIds || []).includes(String(c.id)));
+        comps.forEach(comp => {
+          if (comp.obrigatorio && comp.opcoes && comp.opcoes.length > 0) {
+            opcsIniciais.push(comp.opcoes[0].id);
+          }
+        });
+        setOpcoesSelecionadasModal(opcsIniciais);
+      };
+
+      const handleToggleOpcaoModal = (obrigatorio, grupoId, opcaoId) => {
+        setErroObrigatorioModal(null);
+        const grupo = complementos.find(g => String(g.id) === String(grupoId));
+        if (!grupo) return;
+
+        if (obrigatorio) {
+          const idsDoGrupo = grupo.opcoes.map(o => String(o.id));
+          const semOutrasDoGrupo = opcoesSelecionadasModal.filter(id => !idsDoGrupo.includes(String(id)));
+          setOpcoesSelecionadasModal([...semOutrasDoGrupo, opcaoId]);
+        } else {
+          if (opcoesSelecionadasModal.includes(opcaoId)) {
+            setOpcoesSelecionadasModal(opcoesSelecionadasModal.filter(id => String(id) !== String(opcaoId)));
+          } else {
+            setOpcoesSelecionadasModal([...opcoesSelecionadasModal, opcaoId]);
+          }
+        }
+      };
+
+      const handleAdicionarAoCarrinho = () => {
+        if (!itemModal) return;
+
+        for (const comp of complementosDoItemModal) {
+          if (comp.obrigatorio) {
+            const temOpcaoDoGrupo = comp.opcoes.some(opc => opcoesSelecionadasModal.map(String).includes(String(opc.id)));
+            if (!temOpcaoDoGrupo) {
+              setErroObrigatorioModal(`Por favor, selecione uma opção em "${comp.nome}".`);
+              return;
+            }
+          }
+        }
+
+        const opcoesDetalhadas = [];
+        opcoesSelecionadasModal.forEach(opcId => {
+          complementosDoItemModal.forEach(comp => {
+            const opc = comp.opcoes?.find(o => String(o.id) === String(opcId));
+            if (opc) {
+              opcoesDetalhadas.push({ id: opc.id, nome: opc.nome, preco: Number(opc.preco || 0) });
+            }
+          });
+        });
+
+        const novoItemCarrinho = {
+          carrinhoItemId: Date.now() + Math.random(),
+          produtoId: itemModal.id,
+          nome: itemModal.nome,
+          precoBase: itemModal.preco,
+          precoUnitario: precoUnitarioCalculadoModal,
+          quantidade: qtdModal,
+          subtotal: precoUnitarioCalculadoModal * qtdModal,
+          opcoes: opcoesDetalhadas,
+          observacao: observacaoModal.trim()
+        };
+
+        setCarrinho(prev => [...prev, novoItemCarrinho]);
+        setItemModal(null);
+        mostrarToast(`🛒 ${qtdModal}x "${itemModal.nome}" adicionado!`);
+      };
+
+      const handleRemoverDoCarrinho = (carrinhoItemId) => {
+        setCarrinho(prev => prev.filter(i => i.carrinhoItemId !== carrinhoItemId));
+      };
+
+      const handleAlterarQtdCarrinho = (carrinhoItemId, delta) => {
+        setCarrinho(prev => prev.map(item => {
+          if (item.carrinhoItemId === carrinhoItemId) {
+            const novaQtd = Math.max(1, item.quantidade + delta);
+            return {
+              ...item,
+              quantidade: novaQtd,
+              subtotal: item.precoUnitario * novaQtd
+            };
+          }
+          return item;
+        }));
+      };
+
+      // --- IMPRESSÃO TÉRMICA TIPO 2 VIAS ---
+      const executarImpressaoDireta = (venda) => {
+        if (!venda) return;
+        const printArea = document.getElementById('thermal-receipt-print-area');
+        if (!printArea) return;
+
+        const largura = configImpressora.larguraPapel === '58mm' ? '58mm' : '80mm';
+        printArea.style.width = largura;
+
+        const itensProducaoHTML = (venda.itens || []).map(it => `
+          <div style="margin-bottom: 6px; border-bottom: 1px dashed #000; padding-bottom: 6px;">
+            <div style="display: flex; justify-content: space-between; font-weight: 900; font-size: 13px;">
+              <span>${it.quantidade}x ${it.nome}</span>
+            </div>
+            ${it.opcoes && it.opcoes.length > 0 ? it.opcoes.map(o => `<div style="font-size: 11px; padding-left: 10px; font-weight: bold;">• ${o.nome}</div>`).join('') : ''}
+            ${it.observacao ? `<div style="font-size: 11px; font-weight: 900; background: #000; color: #fff; padding: 2px 6px; border-radius: 4px; margin-top: 4px; display: inline-block;">OBS: ${it.observacao}</div>` : ''}
+          </div>
+        `).join('');
+
+        const totalItensQtd = (venda.itens || []).reduce((sum, i) => sum + (i.quantidade || 1), 0);
+
+        printArea.innerHTML = `
+          <div style="text-align: center; font-size: 12px; line-height: 1.3; color: #000; padding-bottom: 10px;">
+            <div style="font-weight: 900; font-size: 13px; text-transform: uppercase; border: 2px solid #000; padding: 3px 0; margin-bottom: 6px;">
+              *** 1ª VIA - PRODUÇÃO / COZINHA ***
+            </div>
+            <div style="font-weight: 900; font-size: 14px; text-transform: uppercase;">${lojaInfo.nome}</div>
+            <div style="font-size: 11px; margin-bottom: 4px;">Data: ${venda.data} - ${venda.hora}</div>
+            
+            <div style="margin: 8px 0; padding: 6px; border: 3px solid #000; border-radius: 8px; background: #fff;">
+              <div style="font-size: 11px; font-weight: 900; text-transform: uppercase;">SENHA DE ATENDIMENTO</div>
+              <div style="font-size: 40px; font-weight: 900; letter-spacing: 2px; line-height: 1; margin: 2px 0;">#${venda.senha}</div>
+            </div>
+
+            <div style="font-weight: 900; margin-bottom: 4px; text-transform: uppercase; font-size: 13px; text-align: left;">
+              CLIENTE: ${venda.cliente || 'Cliente Balcão'}
+            </div>
+            <div style="margin: 4px 0; font-weight: bold;">================================</div>
+            <div style="text-align: left; margin-bottom: 8px;">
+              ${itensProducaoHTML}
+            </div>
+            <div style="margin: 4px 0; font-weight: bold;">================================</div>
+            <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 900;">
+              <span>TOTAL DE ITENS:</span>
+              <span>${totalItensQtd} un.</span>
+            </div>
+          </div>
+
+          <div style="margin: 15px 0 20px 0; text-align: center; font-size: 10px; font-weight: bold; border-top: 2px dashed #000; border-bottom: 2px dashed #000; padding: 6px 0;">
+            - - - - - - CORTE / DESTAQUE AQUI - - - - - -
+          </div>
+
+          <div style="text-align: center; font-size: 12px; line-height: 1.3; color: #000;">
+            <div style="font-weight: 900; font-size: 13px; text-transform: uppercase; border: 2px solid #000; padding: 3px 0; margin-bottom: 6px;">
+              *** 2ª VIA - CLIENTE / SENHA ***
+            </div>
+            <div style="font-weight: 900; font-size: 15px; text-transform: uppercase;">${lojaInfo.nome}</div>
+            <div>${lojaInfo.endereco}</div>
+            <div>Tel: ${lojaInfo.telefone} ${lojaInfo.cnpj ? ' • ' + lojaInfo.cnpj : ''}</div>
+            <div style="margin: 6px 0; font-weight: bold;">--------------------------------</div>
+            <div style="font-size: 11px;">Data: ${venda.data} - ${venda.hora}</div>
+            
+            <div style="margin: 8px 0; padding: 8px; border: 3px solid #000; border-radius: 8px; background: #fff;">
+              <div style="font-size: 11px; font-weight: 900; text-transform: uppercase;">SUA SENHA DE ATENDIMENTO</div>
+              <div style="font-size: 44px; font-weight: 900; letter-spacing: 2px; line-height: 1; margin: 4px 0;">#${venda.senha}</div>
+              <div style="font-size: 10px; font-weight: bold;">Aguarde a chamada da sua senha</div>
+            </div>
+
+            <div style="font-weight: 900; margin-bottom: 4px; text-transform: uppercase; text-align: left;">
+              CLIENTE: ${venda.cliente || 'Cliente Balcão'}
+            </div>
+            <div style="margin: 6px 0; font-weight: bold;">--------------------------------</div>
+            
+            <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: 900;">
+              <span>TOTAL PAGO:</span>
+              <span>R$ ${(venda.total || 0).toFixed(2)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 4px;">
+              <span>FORMA PAGTO:</span>
+              <span style="font-weight: bold;">${venda.pagamento}</span>
+            </div>
+            ${venda.pagamento === 'Dinheiro' ? `
+              <div style="display: flex; justify-content: space-between; font-size: 11px;">
+                <span>TROCO:</span>
+                <span style="font-weight: bold;">R$ ${(venda.troco || 0).toFixed(2)}</span>
+              </div>
+            ` : ''}
+            <div style="margin: 10px 0 4px 0; font-weight: bold;">--------------------------------</div>
+            <div style="font-size: 11px; font-weight: 900; text-transform: uppercase;">Obrigado pela preferência!</div>
+          </div>
+        `;
+
+        setTimeout(() => {
+          window.print();
+        }, 100);
+      };
+
+      const handleFinalizarPedido = () => {
+        if (carrinho.length === 0) return;
+
+        if (formaPagamento === 'Dinheiro') {
+          const recebido = parseFloat(valorRecebidoDinheiro) || 0;
+          if (recebido < totalCarrinho) {
+            mostrarToast('Valor recebido é menor que o total da venda!', 'alerta');
+            return;
+          }
+        }
+
+        const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const dataAtual = new Date().toLocaleDateString('pt-BR');
+        const senhaFormatada = String(senhaNumero).padStart(2, '0');
+        const novoId = String(Date.now());
+
+        const pedidoConcluido = {
+          id: novoId,
+          timestamp: Date.now(),
+          comanda: senhaFormatada,
+          senha: senhaFormatada,
+          cliente: clienteNome.trim() || 'Cliente Balcão',
+          hora: horaAtual,
+          data: dataAtual,
+          periodo: 'dia',
+          pagamento: formaPagamento,
+          valorRecebido: formaPagamento === 'Dinheiro' ? (parseFloat(valorRecebidoDinheiro) || totalCarrinho) : totalCarrinho,
+          troco: valorTroco,
+          itens: [...carrinho],
+          total: totalCarrinho
+        };
+
+        if (window.SyncService) {
+          window.SyncService.saveDoc('vendas', novoId, pedidoConcluido);
+        }
+
+        setComandaConcluidaModal(pedidoConcluido);
+        setCarrinho([]);
+        setClienteNome('');
+        setValorRecebidoDinheiro('');
+        
+        setSenhaNumero(prev => (prev >= 99 ? 1 : prev + 1));
+
+        if (configImpressora.imprimirAutomatico) {
+          executarImpressaoDireta(pedidoConcluido);
+        }
+      };
+
+      const handleCancelarVenda = (vendaId) => {
+        if (window.SyncService) {
+          window.SyncService.deleteDoc('vendas', vendaId);
+        }
+        setComandaConcluidaModal(null);
+        mostrarToast('❌ Venda estornada com sucesso!', 'alerta');
+      };
+
+      const recibosFiltrados = useMemo(() => {
+        if (!buscaRecibo.trim()) return historicoVendas;
+        const termo = buscaRecibo.toLowerCase();
+        return historicoVendas.filter(v =>
+          String(v.senha).includes(termo) ||
+          (v.cliente && v.cliente.toLowerCase().includes(termo)) ||
+          (v.pagamento && v.pagamento.toLowerCase().includes(termo))
+        );
+      }, [historicoVendas, buscaRecibo]);
+
+      // --- TELA DE LOGIN COM BRANDING GTECH AUTOMATIZAÇÃO ---
+      if (!usuarioLogado) {
+        return (
+          <div className="flex items-center justify-center min-h-screen bg-slate-950 text-white p-4 font-sans select-none">
+            <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+              
+              <div className="text-center space-y-2">
+                <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-indigo-500/30 ring-4 ring-indigo-500/20">
+                  <IconStore />
+                </div>
+                <div>
+                  <div className="inline-block px-3 py-1 bg-indigo-500/10 border border-indigo-500/30 rounded-full text-[11px] font-black text-indigo-400 uppercase tracking-wider mb-1">
+                    Gtech - automatização
+                  </div>
+                  <h1 className="text-base sm:text-lg font-black uppercase tracking-wider text-white">
+                    {lojaInfo.nome}
+                  </h1>
+                  <p className="text-xs text-slate-400">Ponto de Venda & Frente de Caixa</p>
+                </div>
+              </div>
+
+              {erroLogin && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold text-center animate-bounce">
+                  ⚠️ {erroLogin}
+                </div>
+              )}
+
+              <div className="flex bg-slate-950 p-1 rounded-2xl border border-slate-800 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => { setModoLogin('pin'); setErroLogin(''); }}
+                  className={`flex-1 py-2 rounded-xl transition ${modoLogin === 'pin' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+                >
+                  🔢 Login por PIN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setModoLogin('email'); setErroLogin(''); }}
+                  className={`flex-1 py-2 rounded-xl transition ${modoLogin === 'email' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+                >
+                  ✉️ E-mail / Senha
+                </button>
+              </div>
+
+              {modoLogin === 'pin' ? (
+                <div className="space-y-5">
+                  {!operadorSelecionado ? (
+                    <div className="space-y-3">
+                      <span className="block text-xs font-extrabold uppercase tracking-wider text-slate-400 text-center">
+                        Selecione seu Usuário
+                      </span>
+                      <div className="grid grid-cols-1 gap-2.5 max-h-60 overflow-y-auto custom-scroll">
+                        {operadores.filter(o => o.ativo !== false).map((op) => (
+                          <button
+                            key={op.id}
+                            type="button"
+                            onClick={() => handleSelecionarOperadorPin(op)}
+                            className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 transition active:scale-98"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl font-black text-xs text-white flex items-center justify-center shadow-md" style={{ backgroundColor: op.cor || '#6366f1' }}>
+                                {op.iniciais || 'OP'}
+                              </div>
+                              <div className="text-left">
+                                <span className="font-extrabold text-sm text-white block leading-tight">{op.nome}</span>
+                                <span className="text-[11px] text-slate-400 font-medium block">{op.cargo}</span>
+                              </div>
+                            </div>
+                            <span className="text-xs font-bold text-indigo-400">Entrar →</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between bg-slate-800/60 p-3 rounded-2xl border border-slate-700/60">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg font-black text-xs text-white flex items-center justify-center" style={{ backgroundColor: operadorSelecionado.cor || '#6366f1' }}>
+                            {operadorSelecionado.iniciais}
+                          </div>
+                          <div>
+                            <span className="font-extrabold text-xs text-white block">{operadorSelecionado.nome}</span>
+                            <span className="text-[10px] text-slate-400">{operadorSelecionado.cargo}</span>
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => { setOperadorSelecionado(null); setPinInput(''); }} className="text-xs text-indigo-400 font-bold hover:underline">Trocar</button>
+                      </div>
+
+                      <div className="flex justify-center items-center gap-3 py-2">
+                        {[0, 1, 2, 3].map((idx) => (
+                          <div key={idx} className={`w-4 h-4 rounded-full border-2 transition-all duration-200 ${pinInput.length > idx ? 'bg-indigo-500 border-indigo-400 scale-110 shadow-lg shadow-indigo-500/50' : 'border-slate-700 bg-slate-950'}`} />
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2.5">
+                        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
+                          <button key={num} type="button" onClick={() => handlePressTecladoPin(num)} className="py-3.5 bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 rounded-2xl font-mono font-black text-lg text-white transition active:scale-95 border border-slate-700/50">{num}</button>
+                        ))}
+                        <button type="button" onClick={() => setPinInput('')} className="py-3.5 bg-slate-800/50 text-slate-400 rounded-2xl font-bold text-xs">Limpar</button>
+                        <button type="button" onClick={() => handlePressTecladoPin('0')} className="py-3.5 bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 rounded-2xl font-mono font-black text-lg text-white transition active:scale-95 border border-slate-700/50">0</button>
+                        <button type="button" onClick={handleApagarPin} className="py-3.5 bg-slate-800/50 text-slate-400 rounded-2xl font-bold text-xs">⌫</button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 text-center">
+                    <p className="text-[11px] text-slate-400 font-mono">
+                      Gerente PIN: <strong className="text-indigo-400">1234</strong> • Caixa PIN: <strong className="text-emerald-400">0000</strong>
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleLoginEmail} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1">E-mail</label>
+                    <input type="email" placeholder="gerente@doceria.com" value={emailInput} onChange={(e) => setEmailInput(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs font-semibold text-white" required />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Senha</label>
+                    <input type="password" placeholder="••••••••" value={senhaInput} onChange={(e) => setSenhaInput(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs font-semibold text-white" required />
+                  </div>
+                  <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-3 rounded-xl text-xs uppercase tracking-wider shadow-lg">Entrar no Caixa</button>
+                </form>
+              )}
+
+              <div className="pt-2 text-center border-t border-slate-800/80">
+                <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
+                  Gtech - automatização
+                </span>
+              </div>
+
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex flex-col h-full w-full bg-slate-950 overflow-hidden text-slate-100">
+
+          {/* TOAST NOTIFICAÇÃO */}
+          {toast && (
+            <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 max-w-sm w-full px-4">
+              <div className={`p-3 rounded-2xl shadow-xl text-xs font-bold text-white flex items-center justify-between ${toast.tipo === 'alerta' ? 'bg-red-600' : 'bg-slate-900 border border-slate-700'}`}>
+                <span>{toast.mensagem}</span>
+                <button onClick={() => setToast(null)} className="ml-2 font-bold opacity-70">✕</button>
+              </div>
+            </div>
+          )}
+
+          {/* BARRA SUPERIOR DA LOJA COM MARCA GTECH AUTOMATIZAÇÃO */}
+          <header className="bg-slate-900 text-white border-b border-slate-800 px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+            
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center font-black text-xs text-white shrink-0">
+                <IconStore />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="font-extrabold text-xs sm:text-sm tracking-wide uppercase text-white truncate">{lojaInfo.nome}</h1>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    ⚡ Nuvem Sincronizada
+                  </span>
+                </div>
+                <span className="text-[9px] font-black text-indigo-400 uppercase tracking-wider block">
+                  Gtech - automatização
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <div className="hidden lg:flex items-center gap-2 bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-700/60 mr-1">
+                <div className="w-6 h-6 rounded-lg text-[10px] font-black text-white flex items-center justify-center" style={{ backgroundColor: usuarioLogado.cor || '#6366f1' }}>
+                  {usuarioLogado.iniciais || 'OP'}
+                </div>
+                <div className="text-left">
+                  <span className="text-[11px] font-extrabold text-white block leading-tight">{usuarioLogado.nome}</span>
+                  <span className="text-[9px] text-slate-400 block leading-none">{usuarioLogado.cargo}</span>
+                </div>
+              </div>
+
+              <button onClick={handleLogout} className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30">
+                <span>🔒 Sair</span>
+              </button>
+
+              <button onClick={() => setAbaMenuTop('vendas')} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${abaMenuTop === 'vendas' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-300'}`}>
+                <IconShoppingBag />
+                <span>Vendas (PDV)</span>
+              </button>
+
+              <button onClick={() => setAbaMenuTop('recibos')} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${abaMenuTop === 'recibos' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-300'}`}>
+                <IconReceipt />
+                <span>Recibos</span>
+                {historicoVendas.length > 0 && <span className="bg-slate-950 text-indigo-300 text-[10px] px-1.5 py-0.2 rounded-full font-black">{historicoVendas.length}</span>}
+              </button>
+
+              <button onClick={() => setAbaMenuTop('impressoras')} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${abaMenuTop === 'impressoras' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-300'}`}>
+                <IconPrinter />
+                <span className="hidden sm:inline">Impressora</span>
+              </button>
+
+              <button onClick={() => setAbaMenuTop('loja')} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${abaMenuTop === 'loja' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-300'}`}>
+                <IconSettings />
+                <span className="hidden sm:inline">Dados Loja</span>
+              </button>
+            </div>
+
+          </header>
+
+          {/* ÁREA PRINCIPAL */}
+          <div className="flex-1 flex overflow-hidden">
+
+            {abaMenuTop === 'recibos' ? (
+              <div className="flex-1 p-4 bg-slate-900 overflow-y-auto custom-scroll">
+                <div className="max-w-4xl mx-auto space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-800 p-4 rounded-2xl border border-slate-700">
+                    <div>
+                      <h2 className="text-base font-extrabold text-white flex items-center gap-2"><IconReceipt /> Recibos & Vendas Registradas</h2>
+                      <p className="text-xs text-slate-400">Consulte vendas e reimprima comandas a qualquer momento.</p>
+                    </div>
+
+                    <div className="relative w-full sm:w-64">
+                      <input type="text" placeholder="Buscar por cliente ou senha..." value={buscaRecibo} onChange={(e) => setBuscaRecibo(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs font-medium text-white" />
+                      <div className="absolute left-2.5 top-2.5 text-slate-400"><IconSearch /></div>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden divide-y divide-slate-700/60">
+                    {recibosFiltrados.length === 0 ? (
+                      <div className="p-8 text-center text-slate-400"><IconReceipt /><p className="text-sm font-bold mt-2">Nenhum recibo encontrado</p></div>
+                    ) : (
+                      recibosFiltrados.map((venda) => (
+                        <div key={venda.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:bg-slate-700/40 transition">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <span className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 font-mono font-black text-sm flex items-center justify-center shrink-0">#{venda.senha}</span>
+                            <div className="min-w-0 flex-1">
+                              <h3 className="font-extrabold text-white text-sm truncate">{venda.cliente}</h3>
+                              <p className="text-xs text-slate-400">{venda.data} às {venda.hora} • {venda.pagamento}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-4 shrink-0">
+                            <span className="text-base font-black text-emerald-400 font-mono">R$ {(venda.total || 0).toFixed(2)}</span>
+                            <button onClick={() => setComandaConcluidaModal(venda)} className="bg-slate-900 hover:bg-indigo-600 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-700"><IconPrinter /><span>Ver & Reimprimir</span></button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : abaMenuTop === 'impressoras' ? (
+              <div className="flex-1 p-4 bg-slate-900 overflow-y-auto custom-scroll">
+                <div className="max-w-4xl mx-auto space-y-6">
+                  <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
+                    <IconPrinter /> Configuração de Impressora Local
+                  </h2>
+                  <p className="text-xs text-slate-400 -mt-2">Esta configuração fica salva apenas neste dispositivo/tablet.</p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* IMPRESSORA ATIVA CONFIGURADA */}
+                    <div className="bg-slate-800 text-white p-6 rounded-3xl border border-slate-700 space-y-4 flex flex-col justify-center h-full">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">Impressora Ativa Configurada</span>
+                      </div>
+                      
+                      <div className="bg-slate-950 p-5 rounded-2xl border border-slate-700 flex items-start gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+                          <IconPrinter />
+                        </div>
+                        <div>
+                          <h3 className="font-black text-base text-white">{configImpressora.nome}</h3>
+                          <div className="text-xs text-slate-400 mt-1 space-y-1">
+                            <p><strong className="text-slate-300">Conexão:</strong> {configImpressora.tipoConexao}</p>
+                            <p><strong className="text-slate-300">Bobina:</strong> {configImpressora.larguraPapel}</p>
+                            <p><strong className="text-slate-300">Impressão Automática:</strong> {configImpressora.imprimirAutomatico ? 'Ativada ✅' : 'Desativada ❌'}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button onClick={() => executarImpressaoDireta(historicoVendas[0])} disabled={historicoVendas.length === 0} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition disabled:bg-slate-700 disabled:text-slate-500">
+                        <IconPrinter /><span>Testar Impressão da Última Venda</span>
+                      </button>
+                    </div>
+
+                    {/* FORMULÁRIO DE CONFIGURAÇÃO DE IMPRESSORA */}
+                    <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700">
+                      <form onSubmit={(e) => { 
+                        e.preventDefault(); 
+                        localStorage.setItem('gtech_printer_config', JSON.stringify(configImpressora)); 
+                        mostrarToast('🖨️ Configurações da impressora salvas neste dispositivo!'); 
+                      }} className="space-y-4">
+                        
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Nome da Impressora</label>
+                          <input type="text" value={configImpressora.nome} onChange={(e) => setConfigImpressora({...configImpressora, nome: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs font-bold text-white" placeholder="Ex: Impressora do Caixa, Bluetooth Printer..." required />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Tipo de Conexão</label>
+                          <select value={configImpressora.tipoConexao} onChange={(e) => setConfigImpressora({...configImpressora, tipoConexao: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs font-bold text-white">
+                            <option value="Navegador/Spooler">Navegador (Spooler do Sistema)</option>
+                            <option value="Bluetooth">Bluetooth / Pareada</option>
+                            <option value="USB">Cabo USB</option>
+                            <option value="Rede/Wi-Fi">Rede / Wi-Fi</option>
+                          </select>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Tamanho da Bobina</label>
+                          <select value={configImpressora.larguraPapel} onChange={(e) => setConfigImpressora({...configImpressora, larguraPapel: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs font-bold text-white">
+                            <option value="80mm">80mm (Bobina Larga Padrão - Balcão)</option>
+                            <option value="58mm">58mm (Bobina Estreita Portátil)</option>
+                          </select>
+                        </div>
+
+                        <label className="flex items-center gap-3 p-3 bg-slate-900 border border-slate-700 rounded-xl cursor-pointer hover:bg-slate-950 transition">
+                          <input type="checkbox" checked={configImpressora.imprimirAutomatico} onChange={(e) => setConfigImpressora({...configImpressora, imprimirAutomatico: e.target.checked})} className="w-5 h-5 accent-indigo-500 rounded" />
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-white">Impressão Automática</span>
+                            <span className="text-[10px] text-slate-400">Imprime instantaneamente ao finalizar a venda</span>
+                          </div>
+                        </label>
+
+                        <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-3 rounded-xl text-xs uppercase tracking-wider shadow-lg transition mt-2">
+                          Salvar Configurações
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : abaMenuTop === 'loja' ? (
+              <div className="flex-1 p-4 bg-slate-900 overflow-y-auto">
+                <div className="max-w-xl mx-auto bg-slate-800 p-6 rounded-3xl border border-slate-700 space-y-4 text-white">
+                  <h2 className="text-base font-extrabold text-white flex items-center gap-2"><IconStore /> Dados da Loja</h2>
+                  <form onSubmit={(e) => { e.preventDefault(); if (window.SyncService) window.SyncService.saveDoc('lojaInfo', 'principal', lojaInfo); mostrarToast('Dados salvos na nuvem!'); setAbaMenuTop('vendas'); }} className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Nome do Estabelecimento</label>
+                      <input type="text" value={lojaInfo.nome} onChange={(e) => setLojaInfo({ ...lojaInfo, nome: e.target.value })} className="w-full bg-slate-900 border border-slate-700 text-white rounded-xl p-2.5 text-xs font-bold uppercase" required />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Endereço Completo</label>
+                      <input type="text" value={lojaInfo.endereco} onChange={(e) => setLojaInfo({ ...lojaInfo, endereco: e.target.value })} className="w-full bg-slate-900 border border-slate-700 text-white rounded-xl p-2.5 text-xs" required />
+                    </div>
+                    <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl text-xs">Salvar Alterações na Nuvem</button>
+                  </form>
+                </div>
+              </div>
+            ) : (
+              /* SEÇÃO DE VENDAS (PDV) COM LISTA ESTILO LOYVERSE */
+              <div className="flex-1 flex flex-col md:flex-row h-full w-full overflow-hidden">
+                <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-950 border-r border-slate-800">
+                  
+                  <div className="p-3 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 overflow-x-auto custom-scroll max-w-full pb-1">
+                      <button onClick={() => setCategoriaSelecionada('todas')} className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap ${categoriaSelecionada === 'todas' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
+                        Todos os Itens ({produtos.length})
+                      </button>
+                      {categorias.map(cat => (
+                        <button key={cat.id} onClick={() => setCategoriaSelecionada(String(cat.id))} className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex items-center gap-1.5 ${categoriaSelecionada === String(cat.id) ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cat.cor }}></span>
+                          <span>{cat.nome}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="relative w-36 sm:w-48">
+                        <input type="text" placeholder="Buscar item..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} className="w-full bg-slate-950 border border-slate-700 text-white rounded-xl pl-8 pr-2.5 py-1.5 text-xs font-medium" />
+                        <div className="absolute left-2.5 top-2 text-slate-400"><IconSearch /></div>
+                      </div>
+
+                      <div className="flex bg-slate-950 p-0.5 rounded-xl border border-slate-800">
+                        <button onClick={() => setModoExibicao('lista')} className={`p-1.5 rounded-lg text-xs ${modoExibicao === 'lista' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400'}`}><IconList /></button>
+                        <button onClick={() => setModoExibicao('grade')} className={`p-1.5 rounded-lg text-xs ${modoExibicao === 'grade' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400'}`}><IconGrid /></button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* FORMATO LISTA VERTICAL DE PRODUTOS */}
+                  <div className="flex-1 p-3 overflow-y-auto custom-scroll">
+                    {produtosFiltrados.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-500 p-8 text-center"><IconShoppingBag /><p className="text-sm font-bold mt-2">Nenhum produto encontrado</p></div>
+                    ) : modoExibicao === 'lista' ? (
+                      <div className="bg-slate-900 rounded-2xl border border-slate-800 divide-y divide-slate-800 overflow-hidden max-w-5xl mx-auto">
+                        {produtosFiltrados.map((prod) => {
+                          const cat = categorias.find(c => String(c.id) === String(prod.categoriaId));
+                          return (
+                            <div key={prod.id} onClick={() => handleAbrirItem(prod)} className="p-3.5 hover:bg-slate-800/80 cursor-pointer transition flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 group">
+                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <span className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: cat ? cat.cor : '#6366f1' }}></span>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h3 className="font-extrabold text-xs sm:text-sm text-white uppercase tracking-tight group-hover:text-indigo-400">{prod.nome}</h3>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 font-semibold truncate block mt-0.5">{cat ? cat.nome : 'Geral'}</span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3 shrink-0 sm:ml-auto">
+                                <span className="font-mono font-extrabold text-xs sm:text-sm text-emerald-400 bg-slate-950/70 px-3 py-1.5 rounded-xl border border-slate-800">R$ {Number(prod.preco || 0).toFixed(2)}</span>
+                                <button className="bg-indigo-600/20 group-hover:bg-indigo-600 text-indigo-300 group-hover:text-white px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1 border border-indigo-500/30 transition">
+                                  <IconPlus /><span>Incluir</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {produtosFiltrados.map((prod) => {
+                          const cat = categorias.find(c => String(c.id) === String(prod.categoriaId));
+                          return (
+                            <div key={prod.id} onClick={() => handleAbrirItem(prod)} className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 hover:border-indigo-500 cursor-pointer flex flex-col justify-between space-y-3 group">
+                              <div>
+                                <span className="text-[9px] font-extrabold text-white px-2 py-0.5 rounded-md inline-block mb-2" style={{ backgroundColor: cat ? cat.cor : '#6366f1' }}>{cat ? cat.nome : 'Geral'}</span>
+                                <h3 className="font-extrabold text-xs text-white leading-snug group-hover:text-indigo-400 uppercase">{prod.nome}</h3>
+                              </div>
+                              <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+                                <span className="font-mono font-black text-xs text-emerald-400">R$ {Number(prod.preco || 0).toFixed(2)}</span>
+                                <span className="w-7 h-7 rounded-xl bg-slate-800 group-hover:bg-indigo-600 text-slate-300 group-hover:text-white flex items-center justify-center"><IconPlus /></span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* CARRINHO DE COMPRAS E COBRANÇA */}
+                <div className="w-full md:w-[420px] lg:w-[480px] xl:w-[520px] bg-slate-900 border-l border-slate-800 flex flex-col h-full shrink-0 text-white">
+                  <div className="p-3 bg-slate-950 text-white flex items-center justify-between gap-2 shrink-0 border-b border-slate-800">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Atendimento</span>
+                      <h2 className="text-sm font-black text-white flex items-center gap-1.5"><IconShoppingBag /> PEDIDO DO CLIENTE</h2>
+                    </div>
+
+                    <div className="bg-amber-400 text-slate-950 px-3 py-1 rounded-xl flex items-center gap-2">
+                      <div>
+                        <span className="text-[9px] font-black uppercase block text-slate-800">Senha</span>
+                        <span className="font-mono font-black text-base leading-none">#{String(senhaNumero).padStart(2, '0')}</span>
+                      </div>
+                      <div className="flex flex-col gap-0.5 border-l border-amber-500/50 pl-1.5">
+                        <button onClick={() => setSenhaNumero(prev => (prev >= 99 ? 1 : prev + 1))} className="text-[10px] font-black leading-none hover:bg-amber-500 rounded p-0.5">▲</button>
+                        <button onClick={() => setSenhaNumero(prev => (prev <= 1 ? 99 : prev - 1))} className="text-[10px] font-black leading-none hover:bg-amber-500 rounded p-0.5">▼</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-slate-950/60 border-b border-slate-800">
+                    <input type="text" placeholder="Nome do Cliente ou Mesa (Opcional)" value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white rounded-xl px-3 py-1.5 text-xs font-semibold" />
+                  </div>
+
+                  <div className="flex-1 p-3 overflow-y-auto custom-scroll space-y-2.5">
+                    {carrinho.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-500 p-6 text-center"><IconShoppingBag /><p className="text-xs font-bold text-slate-400 mt-2">Carrinho vazio</p></div>
+                    ) : (
+                      carrinho.map((item) => (
+                        <div key={item.carrinhoItemId} className="p-2.5 bg-slate-800/80 rounded-2xl border border-slate-700 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <h4 className="font-extrabold text-xs text-white leading-tight uppercase">{item.nome}</h4>
+                              <span className="font-mono text-[11px] text-emerald-400 font-bold block mt-0.5">Un: R$ {item.precoUnitario.toFixed(2)}</span>
+                            </div>
+                            <button onClick={() => handleRemoverDoCarrinho(item.carrinhoItemId)} className="text-slate-400 hover:text-red-400 p-1"><IconTrash /></button>
+                          </div>
+
+                          {item.opcoes && item.opcoes.length > 0 && (
+                            <div className="bg-slate-900 p-2 rounded-xl border border-slate-700 text-[10px] text-slate-300 space-y-0.5">
+                              {item.opcoes.map((opc, oi) => <div key={oi} className="flex justify-between font-medium"><span>• {opc.nome}</span>{opc.preco > 0 && <span className="font-mono text-emerald-400">+R$ {opc.preco.toFixed(2)}</span>}</div>)}
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between pt-1 border-t border-slate-700/60">
+                            <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-xl border border-slate-700">
+                              <button onClick={() => handleAlterarQtdCarrinho(item.carrinhoItemId, -1)} className="w-6 h-6 font-bold hover:bg-slate-800 text-xs text-white">-</button>
+                              <span className="font-mono font-bold text-xs px-2 text-white">{item.quantidade}</span>
+                              <button onClick={() => handleAlterarQtdCarrinho(item.carrinhoItemId, 1)} className="w-6 h-6 font-bold hover:bg-slate-800 text-xs text-white">+</button>
+                            </div>
+                            <span className="font-mono font-black text-xs text-emerald-400">R$ {item.subtotal.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="p-3 bg-slate-950 border-t border-slate-800 space-y-2.5 shrink-0">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Forma de Pagamento</span>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {['PIX', 'Cartão Crédito', 'Cartão Débito', 'Dinheiro'].map((forma) => (
+                          <button key={forma} onClick={() => setFormaPagamento(forma)} className={`py-1.5 px-2 rounded-xl text-xs font-bold border text-center ${formaPagamento === forma ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-slate-800 bg-slate-900 text-slate-300'}`}>{forma}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {formaPagamento === 'Dinheiro' && (
+                      <div className="grid grid-cols-2 gap-2 bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">Valor Recebido</label>
+                          <input type="number" placeholder="R$ 0,00" value={valorRecebidoDinheiro} onChange={(e) => setValorRecebidoDinheiro(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-1.5 text-xs font-mono font-bold text-white" />
+                        </div>
+                        <div className="text-right flex flex-col justify-center">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase block">Troco</span>
+                          <span className="text-sm font-black text-emerald-400 font-mono">R$ {valorTroco.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="bg-slate-900 text-white p-3.5 rounded-2xl border border-slate-800 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase text-slate-400 block">Total do Pedido</span>
+                        <span className="text-xs text-slate-400">{carrinho.length} item(ns)</span>
+                      </div>
+                      <span className="text-xl font-black font-mono text-emerald-400">R$ {totalCarrinho.toFixed(2)}</span>
+                    </div>
+
+                    <button disabled={carrinho.length === 0} onClick={handleFinalizarPedido} className={`w-full py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition flex items-center justify-center gap-2 ${carrinho.length > 0 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>
+                      <IconCheck /><span>Confirmar & Emitir Comanda</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </div>
+
+          {/* MODAL COMPLEMENTOS ITEM */}
+          {itemModal && (
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4">
+              <div className="bg-slate-900 text-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-800 max-h-[90vh] flex flex-col justify-between overflow-hidden">
+                <div className="flex items-start justify-between border-b border-slate-800 pb-3 shrink-0">
+                  <div className="space-y-1 min-w-0 pr-2">
+                    <h3 className="text-base font-black text-white block truncate uppercase">{itemModal.nome}</h3>
+                    <span className="inline-block bg-slate-800 text-emerald-400 text-xs font-black font-mono px-2.5 py-0.5 rounded-lg border border-slate-700">Preço Base: R$ {Number(itemModal.preco || 0).toFixed(2)}</span>
+                  </div>
+                  <button onClick={() => setItemModal(null)} className="text-slate-400 p-1.5 hover:bg-slate-800 rounded-xl"><IconClose /></button>
+                </div>
+
+                {erroObrigatorioModal && <div className="mt-3 bg-red-500/10 border border-red-500/30 text-red-400 p-2.5 rounded-xl text-xs font-bold shrink-0">⚠️ {erroObrigatorioModal}</div>}
+
+                <div className="flex-1 my-4 overflow-y-auto custom-scroll space-y-4 pr-1">
+                  {complementosDoItemModal.map(grupo => (
+                    <div key={grupo.id} className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span className="font-extrabold text-xs uppercase text-slate-300">{grupo.nome}</span>
+                        {grupo.obrigatorio ? <span className="text-[10px] bg-amber-500/20 border border-amber-500/30 text-amber-400 font-black px-2.5 py-0.5 rounded-md">Obrigatório</span> : <span className="text-[10px] bg-slate-800 text-slate-400 font-bold px-2 py-0.5 rounded-md">Opcional</span>}
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2">
+                        {grupo.opcoes?.map(opc => {
+                          const selecionada = opcoesSelecionadasModal.map(String).includes(String(opc.id));
+                          return (
+                            <button type="button" key={opc.id} onClick={() => handleToggleOpcaoModal(grupo.obrigatorio, grupo.id, opc.id)} className={`w-full flex items-center justify-between p-3 rounded-2xl border text-xs font-semibold transition-all ${selecionada ? 'border-indigo-500 bg-indigo-600 text-white shadow-md' : 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800'}`}>
+                              <div className="flex items-center gap-3">
+                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-black ${selecionada ? 'bg-white text-indigo-600' : 'bg-slate-800 text-transparent'}`}>✓</span>
+                                <span>{opc.nome}</span>
+                              </div>
+                              <span className="font-mono font-bold">{opc.preco > 0 ? `+ R$ ${Number(opc.preco).toFixed(2)}` : 'Grátis'}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
+                    <label className="block text-xs font-extrabold uppercase text-slate-300">Observações para o Preparo</label>
+                    <textarea rows="2" placeholder="Ex: Caprichar no recheio, sem canela..." value={observacaoModal} onChange={(e) => setObservacaoModal(e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white rounded-xl p-2.5 text-xs font-medium resize-none" />
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                    <span className="text-xs font-bold text-slate-400 uppercase">Qtd:</span>
+                    <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-2xl border border-slate-800">
+                      <button type="button" onClick={() => setQtdModal(prev => Math.max(1, prev - 1))} className="w-8 h-8 rounded-xl bg-slate-800 text-white font-black text-sm">-</button>
+                      <span className="w-8 text-center font-mono font-black text-sm text-white">{qtdModal}</span>
+                      <button type="button" onClick={() => setQtdModal(prev => prev + 1)} className="w-8 h-8 rounded-xl bg-slate-800 text-white font-black text-sm">+</button>
+                    </div>
+                  </div>
+
+                  <button type="button" onClick={handleAdicionarAoCarrinho} className="w-full sm:w-auto flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-black py-3 px-5 rounded-2xl text-xs uppercase shadow-lg flex items-center justify-between">
+                    <span>Incluir no Pedido</span>
+                    <span className="font-mono bg-indigo-700 px-2.5 py-1 rounded-xl text-xs">R$ {(precoUnitarioCalculadoModal * qtdModal).toFixed(2)}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL COMANDA CONCLUÍDA E IMPRESSÃO 2 VIAS */}
+          {comandaConcluidaModal && (
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4">
+              <div className="bg-slate-900 text-white rounded-3xl max-w-sm w-full p-5 sm:p-6 shadow-2xl border border-slate-800 flex flex-col space-y-3 max-h-[92vh] overflow-y-auto custom-scroll">
+                <div className="text-center space-y-1 shrink-0">
+                  <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto"><IconCheck /></div>
+                  <h3 className="text-base font-black text-white">Venda Finalizada!</h3>
+                </div>
+
+                <div className="flex bg-slate-950 p-1 rounded-xl text-xs font-bold shrink-0 border border-slate-800">
+                  <button onClick={() => setAbaViaModal('producao')} className={`flex-1 py-1.5 rounded-lg ${abaViaModal === 'producao' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>👨‍🍳 1ª Via (Produção)</button>
+                  <button onClick={() => setAbaViaModal('cliente')} className={`flex-1 py-1.5 rounded-lg ${abaViaModal === 'cliente' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>🎫 2ª Via (Cliente)</button>
+                </div>
+
+                {abaViaModal === 'producao' ? (
+                  <div className="bg-amber-950/40 border-2 border-dashed border-amber-500/40 p-3.5 rounded-2xl font-mono text-xs space-y-2 text-amber-100 shrink-0">
+                    <div className="text-center border-b border-dashed border-amber-500/40 pb-2">
+                      <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded uppercase block mb-1">*** 1ª VIA: PRODUÇÃO / COZINHA ***</span>
+                      <p className="font-extrabold text-xs uppercase">{lojaInfo.nome}</p>
+                      <div className="my-2 p-2 bg-amber-400 text-slate-950 rounded-xl">
+                        <p className="text-[10px] font-black uppercase">SENHA DE ATENDIMENTO</p>
+                        <p className="font-black text-3xl tracking-widest leading-tight">#{comandaConcluidaModal.senha}</p>
+                      </div>
+                      <p className="text-[11px] font-extrabold truncate">Cliente: {comandaConcluidaModal.cliente}</p>
+                    </div>
+
+                    <div className="space-y-2 py-1 max-h-36 overflow-y-auto custom-scroll">
+                      {comandaConcluidaModal.itens.map((it, idx) => (
+                        <div key={idx} className="border-b border-amber-500/20 pb-1.5">
+                          <div className="font-black text-xs text-amber-200">{it.quantidade}x {it.nome}</div>
+                          {it.opcoes && it.opcoes.map((o, oi) => <span key={oi} className="block text-[10px] font-bold text-amber-300 pl-2">• {o.nome}</span>)}
+                          {it.observacao && <div className="text-[10px] font-black bg-slate-900 text-white p-1 rounded mt-1 border border-amber-500/30">OBS: {it.observacao}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-emerald-950/40 border-2 border-dashed border-emerald-500/40 p-3.5 rounded-2xl font-mono text-xs space-y-2 text-emerald-100 shrink-0">
+                    <div className="text-center border-b border-dashed border-emerald-500/40 pb-2">
+                      <span className="bg-emerald-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded uppercase block mb-1">*** 2ª VIA: CLIENTE / SENHA ***</span>
+                      <p className="font-extrabold text-xs uppercase">{lojaInfo.nome}</p>
+                      <div className="my-2 p-2.5 bg-emerald-500 text-slate-950 rounded-xl">
+                        <p className="text-[10px] font-black uppercase">SUA SENHA DE ATENDIMENTO</p>
+                        <p className="font-black text-4xl tracking-widest leading-tight">#{comandaConcluidaModal.senha}</p>
+                      </div>
+                      <p className="text-[11px] font-extrabold truncate">Cliente: {comandaConcluidaModal.cliente}</p>
+                    </div>
+
+                    <div className="space-y-1 text-emerald-200">
+                      <div className="flex justify-between font-black text-sm text-white"><span>TOTAL PAGO:</span><span>R$ {(comandaConcluidaModal.total || 0).toFixed(2)}</span></div>
+                      <div className="flex justify-between text-[11px]"><span>Forma Pagto:</span><span className="font-bold">{comandaConcluidaModal.pagamento}</span></div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-2 pt-1 shrink-0">
+                  <div className="flex gap-2">
+                    <button onClick={() => executarImpressaoDireta(comandaConcluidaModal)} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-black py-2.5 rounded-2xl text-xs flex items-center justify-center gap-1.5"><IconPrinter /><span>Imprimir 2 Vias</span></button>
+                    <button onClick={() => setComandaConcluidaModal(null)} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2.5 rounded-2xl text-xs">Nova Venda</button>
+                  </div>
+                  <button onClick={() => handleCancelarVenda(comandaConcluidaModal.id)} className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-bold py-2 rounded-2xl text-xs flex items-center justify-center gap-1.5"><IconTrash /><span>Cancelar Venda</span></button>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
