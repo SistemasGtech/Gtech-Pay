@@ -8,6 +8,7 @@ import {
   listNativePrinters,
   loadPrinterConfig,
   normalizeMac,
+  requestBluetoothAccess,
   requestPrinterPermissions,
   savePrinterConfig,
   testarImpressora,
@@ -68,9 +69,21 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
       setMsg(
         config.transport === 'usb'
           ? 'Nenhuma USB detectada. Use cabo OTG e toque Atualizar.'
-          : 'Nenhuma Bluetooth listada. Pareie a impressora em Ajustes → Bluetooth, depois Atualizar ou digite o MAC.',
+          : 'Lista vazia: pareie a impressora em Ajustes → Bluetooth do tablet (não dentro do app). Depois toque Atualizar. A lista mostra todos os aparelhos pareados — escolha a impressora ou digite o MAC abaixo.',
       );
     }
+  };
+
+  const permitirBluetooth = async () => {
+    setLoading(true);
+    setMsg('');
+    const err = await requestBluetoothAccess();
+    if (err) {
+      setMsg(err);
+      setLoading(false);
+      return;
+    }
+    await refreshDevices();
   };
 
   useEffect(() => {
@@ -197,6 +210,25 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
           </p>
         )}
       </div>
+
+      {native && config.transport === 'bluetooth' && (
+        <div className="bg-amber-500/10 border border-amber-500/40 rounded-2xl p-4 space-y-2 text-xs text-amber-100 leading-relaxed">
+          <p className="font-black text-amber-200">Antes da lista</p>
+          <ol className="list-decimal list-inside space-y-1 text-slate-300">
+            <li>Ligue a impressora 58mm</li>
+            <li>Android → <strong>Bluetooth</strong> → parear (PIN 0000 ou 1234)</li>
+            <li>Aqui: <strong>Permitir Bluetooth</strong> → <strong>Atualizar lista</strong></li>
+          </ol>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void permitirBluetooth()}
+            className="w-full py-2.5 mt-2 bg-indigo-600 rounded-xl font-bold text-sm text-white"
+          >
+            Permitir Bluetooth e buscar
+          </button>
+        </div>
+      )}
 
       {native && config.transport === 'bluetooth' && (
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 space-y-3">

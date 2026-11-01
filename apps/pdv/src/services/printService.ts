@@ -55,13 +55,38 @@ async function getThermalPrinter() {
   return { ThermalPrinter: mod.ThermalPrinter, bytesToBase64: mod.bytesToBase64 };
 }
 
+const PERM_MAC_PLACEHOLDER = '00:11:22:33:44:55';
+
+export async function requestBluetoothAccess(): Promise<string | null> {
+  if (!Capacitor.isNativePlatform()) return null;
+  try {
+    const { ThermalPrinter } = await getThermalPrinter();
+    const perm = await ThermalPrinter.requestPermission({
+      transport: 'bluetooth',
+      address: PERM_MAC_PLACEHOLDER,
+    });
+    if (!perm.granted) {
+      return 'Permissão Bluetooth negada. Ajustes → Apps → Gtech PDV → Permissões → Dispositivos por perto.';
+    }
+    return null;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/unimplemented|solo android/i.test(msg)) {
+      return 'App sem plugin de impressora. Gere e instale o APK novo (npm run pdv:build + cap sync).';
+    }
+    return msg || 'Erro ao pedir permissão Bluetooth.';
+  }
+}
+
 export async function requestPrinterPermissions(config: PrinterConfig): Promise<string | null> {
   if (!Capacitor.isNativePlatform() || config.transport === 'browser') return null;
   try {
     const { ThermalPrinter } = await getThermalPrinter();
     if (config.transport === 'bluetooth') {
-      const address = normalizeMac(config.bluetoothAddress);
-      if (!isValidBluetoothMac(address)) {
+      const address = config.bluetoothAddress.trim()
+        ? normalizeMac(config.bluetoothAddress)
+        : PERM_MAC_PLACEHOLDER;
+      if (config.bluetoothAddress.trim() && !isValidBluetoothMac(address)) {
         return 'Informe o MAC Bluetooth (pareie antes em Ajustes → Bluetooth).';
       }
       const perm = await ThermalPrinter.requestPermission({ transport: 'bluetooth', address });
@@ -87,7 +112,11 @@ export async function requestPrinterPermissions(config: PrinterConfig): Promise<
       return perm.granted ? null : 'Não foi possível usar a impressora na rede.';
     }
   } catch (e) {
-    return e instanceof Error ? e.message : 'Erro ao pedir permissão da impressora.';
+    const msg = e instanceof Error ? e.message : 'Erro ao pedir permissão da impressora.';
+    if (/unimplemented|solo android/i.test(msg)) {
+      return 'App sem plugin de impressora. Reinstale o APK atualizado.';
+    }
+    return msg;
   }
   return null;
 }
@@ -98,6 +127,12 @@ export async function listNativePrinters(
   if (!Capacitor.isNativePlatform()) return { devices: [] };
   try {
     const { ThermalPrinter } = await getThermalPrinter();
+
+    if (transport === 'bluetooth' || transport === 'all') {
+      const accessErr = await requestBluetoothAccess();
+      if (accessErr) return { devices: [], error: accessErr };
+    }
+
     const devices: ListedDevice[] = [];
 
     if (transport === 'bluetooth' || transport === 'all') {
@@ -129,7 +164,13 @@ export async function listNativePrinters(
 
     return { devices };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Falha ao listar impressoras';
+    let msg = e instanceof Error ? e.message : 'Falha ao listar impressoras';
+    if (/unimplemented|solo android/i.test(msg)) {
+      msg = 'Plugin de impressora não encontrado. Instale o APK gerado após cap sync.';
+    }
+    if (/permission|permiso|denied/i.test(msg)) {
+      msg = 'Permissão Bluetooth negada. Toque em "Permitir Bluetooth" ou libere nas configurações do app.';
+    }
     console.warn('listNativePrinters', e);
     return { devices: [], error: msg };
   }
