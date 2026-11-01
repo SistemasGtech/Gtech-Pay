@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Gtech PDV</string>
+    <string name="title_activity_main">Gtech PDV</string>
+    <string name="package_name">com.gtech.pdv</string>
+    <string name="custom_url_scheme">com.gtech.pdv</string>
+</resources>

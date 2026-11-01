@@ -6,10 +6,12 @@
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "node scripts/link-pdv-plugins.mjs",
     "pdv": "npm run dev -w @gtech/pdv",
     "dashboard": "npm run dev -w @gtech/dashboard",
     "pdv:build": "npm run build -w @gtech/pdv",
     "dashboard:build": "npm run build -w @gtech/dashboard",
-    "pdv:android": "npm run cap:sync -w @gtech/pdv && npm run cap:open:android -w @gtech/pdv"
+    "pdv:android": "npm run cap:sync -w @gtech/pdv && npm run cap:open:android -w @gtech/pdv",
+    "pdv:apk": "npm run pdv:build && npm run cap:sync -w @gtech/pdv && cd apps/pdv/android && gradlew.bat assembleDebug"
   }
 }

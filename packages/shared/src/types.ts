@@ -1,15 +1,18 @@
 export type FormaPagamento = 'PIX' | 'Cartão Crédito' | 'Cartão Débito' | 'Dinheiro';
 
-export type PrinterTransport = 'browser' | 'bluetooth' | 'usb';
+export type PrinterTransport = 'browser' | 'bluetooth' | 'usb' | 'tcp';
 
 export interface PrinterConfig {
   transport: PrinterTransport;
   /** Nome amigável / impressora pareada */
   deviceName: string;
-  /** MAC Bluetooth (SPP) */
+  /** MAC Bluetooth (SPP) — formato AA:BB:CC:DD:EE:FF */
   bluetoothAddress: string;
   usbVendorId?: number;
   usbProductId?: number;
+  /** Impressora na rede (ESC/POS porta 9100) */
+  tcpHost?: string;
+  tcpPort?: number;
   larguraPapel: '58mm' | '80mm';
   imprimirAutomatico: boolean;
 }

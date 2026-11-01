@@ -9,6 +9,8 @@ export const DEFAULT_PRINTER_CONFIG: PrinterConfig = {
   transport: Capacitor.isNativePlatform() ? 'bluetooth' : 'browser',
   deviceName: '',
   bluetoothAddress: '',
+  tcpHost: '',
+  tcpPort: 9100,
   larguraPapel: '80mm',
   imprimirAutomatico: true,
 };
@@ -30,41 +32,129 @@ export function savePrinterConfig(config: PrinterConfig): void {
 export interface ListedDevice {
   id: string;
   name: string;
-  transport: 'bluetooth' | 'usb';
+  transport: 'bluetooth' | 'usb' | 'tcp';
   address?: string;
   vendorId?: number;
   productId?: number;
+  host?: string;
+  port?: number;
 }
 
-export async function listNativePrinters(): Promise<ListedDevice[]> {
+function normalizeMac(input: string): string {
+  const hex = input.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+  if (hex.length !== 12) return input.trim();
+  return hex.match(/.{1,2}/g)!.join(':');
+}
+
+export function isValidBluetoothMac(mac: string): boolean {
+  return /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/i.test(normalizeMac(mac));
+}
+
+async function getThermalPrinter() {
+  const mod = await import('@devlas/capacitor-thermal-printer');
+  return { ThermalPrinter: mod.ThermalPrinter, bytesToBase64: mod.bytesToBase64 };
+}
+
+export async function requestPrinterPermissions(config: PrinterConfig): Promise<string | null> {
+  if (!Capacitor.isNativePlatform() || config.transport === 'browser') return null;
+  try {
+    const { ThermalPrinter } = await getThermalPrinter();
+    if (config.transport === 'bluetooth') {
+      const address = normalizeMac(config.bluetoothAddress);
+      if (!isValidBluetoothMac(address)) {
+        return 'Informe o MAC Bluetooth (pareie antes em Ajustes → Bluetooth).';
+      }
+      const perm = await ThermalPrinter.requestPermission({ transport: 'bluetooth', address });
+      return perm.granted ? null : 'Permissão Bluetooth negada. Ative em Ajustes do Android.';
+    }
+    if (config.transport === 'usb') {
+      if (config.usbVendorId == null || config.usbProductId == null) {
+        return 'Selecione uma impressora USB na lista.';
+      }
+      const perm = await ThermalPrinter.requestPermission({
+        transport: 'usb',
+        vendorId: config.usbVendorId,
+        productId: config.usbProductId,
+      });
+      return perm.granted ? null : 'Permissão USB negada. Reconecte o cabo OTG e aceite o diálogo.';
+    }
+    if (config.transport === 'tcp') {
+      const perm = await ThermalPrinter.requestPermission({
+        transport: 'tcp',
+        host: config.tcpHost?.trim() || '',
+        port: config.tcpPort ?? 9100,
+      });
+      return perm.granted ? null : 'Não foi possível usar a impressora na rede.';
+    }
+  } catch (e) {
+    return e instanceof Error ? e.message : 'Erro ao pedir permissão da impressora.';
+  }
+  return null;
+}
+
+export async function listNativePrinters(
+  transport: 'bluetooth' | 'usb' | 'all' = 'all',
+): Promise<{ devices: ListedDevice[]; error?: string }> {
+  if (!Capacitor.isNativePlatform()) return { devices: [] };
+  try {
+    const { ThermalPrinter } = await getThermalPrinter();
+    const devices: ListedDevice[] = [];
+
+    if (transport === 'bluetooth' || transport === 'all') {
+      const bt = await ThermalPrinter.list({ transport: 'bluetooth' });
+      for (const d of bt.devices ?? []) {
+        if (!d.address) continue;
+        devices.push({
+          id: `bt:${d.address}`,
+          name: d.name ?? d.address,
+          transport: 'bluetooth',
+          address: d.address,
+        });
+      }
+    }
+
+    if (transport === 'usb' || transport === 'all') {
+      const usb = await ThermalPrinter.list({ transport: 'usb' });
+      for (const d of usb.devices ?? []) {
+        if (d.vendorId == null || d.productId == null) continue;
+        devices.push({
+          id: `usb:${d.vendorId}:${d.productId}`,
+          name: d.name ?? `USB ${d.vendorId}:${d.productId}`,
+          transport: 'usb',
+          vendorId: d.vendorId,
+          productId: d.productId,
+        });
+      }
+    }
+
+    return { devices };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Falha ao listar impressoras';
+    console.warn('listNativePrinters', e);
+    return { devices: [], error: msg };
+  }
+}
+
+export async function discoverNetworkPrinters(timeoutMs = 5000): Promise<ListedDevice[]> {
   if (!Capacitor.isNativePlatform()) return [];
   try {
-    const { ThermalPrinter } = await import('@devlas/capacitor-thermal-printer');
-    const bt = await ThermalPrinter.list({ transport: 'bluetooth' });
-    const usb = await ThermalPrinter.list({ transport: 'usb' });
-    const devices: ListedDevice[] = [];
-    for (const d of bt.devices ?? []) {
-      devices.push({
-        id: `bt:${d.address}`,
-        name: d.name ?? d.address ?? 'Bluetooth',
-        transport: 'bluetooth',
-        address: d.address,
-      });
-    }
-    for (const d of usb.devices ?? []) {
-      devices.push({
-        id: `usb:${d.vendorId}:${d.productId}`,
-        name: d.name ?? `USB ${d.vendorId}:${d.productId}`,
-        transport: 'usb',
-        vendorId: d.vendorId,
-        productId: d.productId,
-      });
-    }
-    return devices;
+    const { ThermalPrinter } = await getThermalPrinter();
+    const res = await ThermalPrinter.discover({ transport: 'tcp', timeoutMs });
+    return (res.devices ?? []).map((d) => ({
+      id: `tcp:${d.host}:${d.port}`,
+      name: d.name || `${d.host}:${d.port}`,
+      transport: 'tcp' as const,
+      host: d.host,
+      port: d.port,
+    }));
   } catch (e) {
-    console.warn('listNativePrinters', e);
+    console.warn('discoverNetworkPrinters', e);
     return [];
   }
+}
+
+function formatBrlHtml(value: number): string {
+  return `R$ ${value.toFixed(2).replace('.', ',')}`;
 }
 
 function htmlViaProducao(venda: Venda, loja: LojaInfo): string {
@@ -72,8 +162,12 @@ function htmlViaProducao(venda: Venda, loja: LojaInfo): string {
     .map(
       (it) => `
     <div style="margin-bottom:6px;border-bottom:1px dashed #000;padding-bottom:6px;text-align:left;">
-      <div style="font-weight:900;font-size:13px;">${it.quantidade}x ${it.nome}</div>
-      ${it.opcoes.map((o) => `<div style="font-size:11px;padding-left:8px;font-weight:bold;">• ${o.nome}</div>`).join('')}
+      <div style="display:flex;justify-content:space-between;font-weight:900;font-size:13px;gap:4px;">
+        <span>${it.quantidade}x ${it.nome}</span>
+        <span>${formatBrlHtml(it.subtotal)}</span>
+      </div>
+      <div style="font-size:10px;color:#333;padding-left:4px;">${formatBrlHtml(it.precoUnitario)}/un</div>
+      ${it.opcoes.map((o) => `<div style="font-size:11px;padding-left:8px;font-weight:bold;">• ${o.nome}${o.preco > 0 ? ` (+${formatBrlHtml(o.preco)})` : ''}</div>`).join('')}
       ${it.observacao ? `<div style="font-weight:900;margin-top:4px;font-size:11px;">OBS: ${it.observacao}</div>` : ''}
     </div>`,
     )
@@ -100,7 +194,15 @@ function htmlViaProducao(venda: Venda, loja: LojaInfo): string {
       <div style="display:flex;justify-content:space-between;font-weight:900;font-size:12px;">
         <span>Itens</span><span>${qtd}</span>
       </div>
+      <div style="display:flex;justify-content:space-between;font-weight:900;font-size:15px;margin-top:6px;padding-top:4px;border-top:2px solid #000;">
+        <span>TOTAL</span><span>${formatBrlHtml(venda.total)}</span>
+      </div>
       <div style="text-align:left;font-size:11px;margin-top:4px;">Pagamento: ${venda.pagamento}</div>
+      ${
+        venda.pagamento === 'Dinheiro'
+          ? `<div style="text-align:left;font-size:11px;">Recebido: ${formatBrlHtml(venda.valorRecebido)} · Troco: ${formatBrlHtml(venda.troco)}</div>`
+          : ''
+      }
     </div>`;
 }
 
@@ -131,31 +233,44 @@ function printViaBrowser(venda: Venda, loja: LojaInfo, config: PrinterConfig): v
 }
 
 async function printViaNative(venda: Venda, loja: LojaInfo, config: PrinterConfig): Promise<void> {
-  const { ThermalPrinter, bytesToBase64: b64 } = await import('@devlas/capacitor-thermal-printer');
+  const { ThermalPrinter, bytesToBase64: b64 } = await getThermalPrinter();
   const data = buildTwoViaReceipt(venda, loja, config);
   const payload = b64(data);
 
+  const permErr = await requestPrinterPermissions(config);
+  if (permErr) throw new Error(permErr);
+
   if (config.transport === 'bluetooth') {
-    if (!config.bluetoothAddress) throw new Error('Selecione uma impressora Bluetooth pareada.');
-    const target = { transport: 'bluetooth' as const, address: config.bluetoothAddress };
-    const perm = await ThermalPrinter.requestPermission(target);
-    if (!perm.granted) throw new Error('Permissão Bluetooth negada.');
-    await ThermalPrinter.print({ ...target, data: payload });
+    const address = normalizeMac(config.bluetoothAddress);
+    if (!isValidBluetoothMac(address)) {
+      throw new Error('Selecione a impressora ou digite o MAC Bluetooth (AA:BB:CC:DD:EE:FF).');
+    }
+    await ThermalPrinter.print({ transport: 'bluetooth', address, data: payload });
     return;
   }
 
   if (config.transport === 'usb') {
     if (config.usbVendorId == null || config.usbProductId == null) {
-      throw new Error('Selecione uma impressora USB.');
+      throw new Error('Selecione uma impressora USB na lista.');
     }
-    const target = {
-      transport: 'usb' as const,
+    await ThermalPrinter.print({
+      transport: 'usb',
       vendorId: config.usbVendorId,
       productId: config.usbProductId,
-    };
-    const perm = await ThermalPrinter.requestPermission(target);
-    if (!perm.granted) throw new Error('Permissão USB negada.');
-    await ThermalPrinter.print({ ...target, data: payload });
+      data: payload,
+    });
+    return;
+  }
+
+  if (config.transport === 'tcp') {
+    const host = config.tcpHost?.trim();
+    if (!host) throw new Error('Informe o IP da impressora (Wi‑Fi/LAN).');
+    await ThermalPrinter.print({
+      transport: 'tcp',
+      host,
+      port: config.tcpPort ?? 9100,
+      data: payload,
+    });
     return;
   }
 
@@ -165,7 +280,7 @@ async function printViaNative(venda: Venda, loja: LojaInfo, config: PrinterConfi
 export async function imprimirVenda(
   venda: Venda,
   loja: LojaInfo,
-  config: PrinterConfig
+  config: PrinterConfig,
 ): Promise<void> {
   if (config.transport === 'browser' || !Capacitor.isNativePlatform()) {
     printViaBrowser(venda, loja, config);
@@ -174,10 +289,7 @@ export async function imprimirVenda(
   await printViaNative(venda, loja, config);
 }
 
-export async function testarImpressora(
-  loja: LojaInfo,
-  config: PrinterConfig
-): Promise<void> {
+export async function testarImpressora(loja: LojaInfo, config: PrinterConfig): Promise<void> {
   const agora = new Date();
   const vendaTeste: Venda = {
     id: 'test',
@@ -207,3 +319,5 @@ export async function testarImpressora(
   };
   await imprimirVenda(vendaTeste, loja, config);
 }
+
+export { normalizeMac };

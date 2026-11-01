@@ -61,6 +61,20 @@ function cmdTextSize(width: number, height: number): Uint8Array {
   return new Uint8Array([GS, 0x21, (w << 4) | h]);
 }
 
+function formatBrl(value: number): string {
+  return `R$ ${value.toFixed(2).replace('.', ',')}`;
+}
+
+/** Linha com texto à esquerda e valor à direita (largura em caracteres). */
+function lineLeftRight(left: string, right: string, width: number): string {
+  const l = normalizePrintText(left);
+  const r = normalizePrintText(right);
+  const gap = width - l.length - r.length;
+  if (gap >= 1) return l + ' '.repeat(gap) + r;
+  const maxLeft = Math.max(1, width - r.length - 1);
+  return `${l.slice(0, maxLeft)} ${r}`;
+}
+
 function buildViaProducao(venda: Venda, loja: LojaInfo, chars: number): Uint8Array {
   const parts: Uint8Array[] = [
     cmdInit(),
@@ -92,8 +106,16 @@ function buildViaProducao(venda: Venda, loja: LojaInfo, chars: number): Uint8Arr
   );
 
   for (const it of venda.itens) {
-    parts.push(cmdBold(true), cmdTextLine(`${it.quantidade}x ${it.nome}`), cmdBold(false));
-    for (const o of it.opcoes) parts.push(cmdTextLine(`  * ${o.nome}`));
+    parts.push(
+      cmdBold(true),
+      cmdTextLine(lineLeftRight(`${it.quantidade}x ${it.nome}`, formatBrl(it.subtotal), chars)),
+      cmdBold(false),
+    );
+    parts.push(cmdTextLine(`  ${formatBrl(it.precoUnitario)}/un`));
+    for (const o of it.opcoes) {
+      const extra = o.preco > 0 ? ` +${formatBrl(o.preco)}` : '';
+      parts.push(cmdTextLine(`  * ${o.nome}${extra}`));
+    }
     if (it.observacao) parts.push(cmdBold(true), cmdTextLine(`OBS: ${it.observacao}`), cmdBold(false));
   }
 
@@ -101,9 +123,18 @@ function buildViaProducao(venda: Venda, loja: LojaInfo, chars: number): Uint8Arr
   parts.push(
     cmdTextLine('-'.repeat(chars)),
     cmdTextLine(`Itens: ${qtd}`),
+    cmdBold(true),
+    cmdTextLine(lineLeftRight('TOTAL', formatBrl(venda.total), chars)),
+    cmdBold(false),
     cmdTextLine(`Pagamento: ${venda.pagamento}`),
-    cmdFeed(2),
   );
+  if (venda.pagamento === 'Dinheiro') {
+    parts.push(
+      cmdTextLine(lineLeftRight('Recebido', formatBrl(venda.valorRecebido), chars)),
+      cmdTextLine(lineLeftRight('Troco', formatBrl(venda.troco), chars)),
+    );
+  }
+  parts.push(cmdFeed(2));
   return concatBytes(parts);
 }
 

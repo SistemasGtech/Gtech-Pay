@@ -1,0 +1,9 @@
+{
+  "appId": "com.gtech.pdv",
+  "appName": "Gtech PDV",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": true,
+    "includePlugins": ["@devlas/capacitor-thermal-printer"]
+  }
+}
