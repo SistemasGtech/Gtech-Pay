@@ -278,3 +278,124 @@ export async function deleteVendaRemote(vendaId: string): Promise<void> {
   const { error } = await supabase.from('vendas').delete().eq('id', vendaId);
   if (error) throw error;
 }
+
+export type StoreProfile = {
+  id: string;
+  email: string | null;
+  role: string;
+  createdAt: string | null;
+  isSelf: boolean;
+};
+
+export type StoreInvite = {
+  id: string;
+  token: string;
+  role: string;
+  expiresAt: string;
+  createdAt: string;
+};
+
+function supabaseErrMsg(error: { message?: string; details?: string; hint?: string }): string {
+  return [error.message, error.details, error.hint].filter(Boolean).join(' — ');
+}
+
+export async function fetchStoreProfiles(storeId: string): Promise<{ list: StoreProfile[]; myRole: string }> {
+  if (!supabase) throw new Error('Supabase não configurado');
+  const { data: userData } = await supabase.auth.getUser();
+  const uid = userData.user?.id;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, email, role, created_at')
+    .eq('store_id', storeId)
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(supabaseErrMsg(error));
+  const me = (data ?? []).find((r) => r.id === uid);
+  const list: StoreProfile[] = (data ?? []).map((r) => ({
+    id: r.id,
+    email: r.email ?? null,
+    role: r.role,
+    createdAt: r.created_at ?? null,
+    isSelf: r.id === uid,
+  }));
+  return { list, myRole: me?.role ?? 'operador' };
+}
+
+export async function updateMemberRole(userId: string, role: 'admin' | 'operador'): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from('profiles').update({ role }).eq('id', userId);
+  if (error) throw error;
+}
+
+export async function removeStoreMember(userId: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from('profiles').delete().eq('id', userId);
+  if (error) throw error;
+}
+
+export async function registerStoreUser(
+  email: string,
+  password: string,
+  role: 'admin' | 'operador'
+): Promise<void> {
+  if (!supabase || !url || !anonKey) throw new Error('Supabase não configurado');
+  const invite = await createStoreInvite(role);
+  const ephemeral = createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const { error } = await ephemeral.auth.signUp({
+    email: email.trim(),
+    password,
+    options: { data: { invite_token: invite.token } },
+  });
+  if (error) {
+    const msg = supabaseErrMsg(error);
+    if (/already registered|already exists|User already registered/i.test(msg)) {
+      await attachStoreMemberByEmail(email, role);
+      return;
+    }
+    throw new Error(msg);
+  }
+}
+
+/** Usuário já existe no Auth (ex.: criado no painel Supabase) — vincula à loja atual */
+export async function attachStoreMemberByEmail(email: string, role: 'admin' | 'operador'): Promise<void> {
+  if (!supabase) throw new Error('Supabase não configurado');
+  const { error } = await supabase.rpc('attach_store_member_by_email', {
+    p_email: email.trim(),
+    p_role: role,
+  });
+  if (error) throw new Error(supabaseErrMsg(error));
+}
+
+async function createStoreInvite(role: 'admin' | 'operador'): Promise<{ token: string; expiresAt: string }> {
+  if (!supabase) throw new Error('Supabase não configurado');
+  const { data, error } = await supabase.rpc('create_store_invite', { p_role: role });
+  if (error) throw new Error(supabaseErrMsg(error));
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.token) throw new Error('Resposta inválida ao criar convite');
+  return { token: String(row.token), expiresAt: String(row.expires_at ?? row.expiresAt) };
+}
+
+export async function fetchStoreInvites(): Promise<StoreInvite[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('store_invites')
+    .select('id, token, role, expires_at, created_at')
+    .is('used_at', null)
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(supabaseErrMsg(error));
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    token: r.token,
+    role: r.role,
+    expiresAt: r.expires_at,
+    createdAt: r.created_at,
+  }));
+}
+
+export async function revokeStoreInvite(inviteId: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from('store_invites').delete().eq('id', inviteId);
+  if (error) throw error;
+}

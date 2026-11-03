@@ -39,3 +39,11 @@ export function resetAdminPasswordToDefault(): AdminCredentials {
 export function getActiveAdminUser(): string {
   return loadStoredAuth().user;
 }
+
+export function getLocalAdminCredentials(): AdminCredentials {
+  return loadStoredAuth();
+}
+
+export function updateLocalAdminCredentials(user: string, password: string): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ user: user.trim(), password }));
+}

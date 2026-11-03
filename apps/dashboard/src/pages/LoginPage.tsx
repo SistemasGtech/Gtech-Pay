@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { isSupabaseEnabled } from '../lib/authSupabase';
 import { resetPassword, signInWithEmail, signUpAdmin } from '../lib/authSupabase';
+import { traduzirErro } from '../lib/mensagensPt';
 import { resetAdminPasswordToDefault, validateAdminLogin, DEFAULT_ADMIN_PASSWORD, DEFAULT_ADMIN_USER } from '../auth';
 import { GtechPayLogo } from '../components/GtechPayLogo';
 
@@ -22,6 +23,15 @@ export function LoginPage({ onSuccess }: Props) {
   const [loading, setLoading] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
 
+  const inviteToken = useMemo(() => {
+    const q = new URLSearchParams(window.location.search).get('invite');
+    return q?.trim() || '';
+  }, []);
+
+  useEffect(() => {
+    if (inviteToken && cloud) setMode('signup');
+  }, [inviteToken, cloud]);
+
   const submitLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr('');
@@ -39,7 +49,7 @@ export function LoginPage({ onSuccess }: Props) {
       }
       onSuccess();
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Falha ao entrar.');
+      setErr(traduzirErro(ex instanceof Error ? ex.message : 'Falha ao entrar.'));
     } finally {
       setLoading(false);
     }
@@ -51,11 +61,15 @@ export function LoginPage({ onSuccess }: Props) {
     setMsg('');
     setLoading(true);
     try {
-      await signUpAdmin(email, password);
-      setMsg('Conta criada! Confirme o e-mail (se solicitado) e faça login. Sua loja já foi criada na nuvem.');
+      await signUpAdmin(email, password, inviteToken || undefined);
+      setMsg(
+        inviteToken
+          ? 'Conta criada e vinculada à loja! Confirme o e-mail (se solicitado) e faça login.'
+          : 'Conta criada! Confirme o e-mail (se solicitado) e faça login. Sua loja já foi criada na nuvem.'
+      );
       setMode('login');
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Falha no cadastro.');
+      setErr(traduzirErro(ex instanceof Error ? ex.message : 'Falha no cadastro.'));
     } finally {
       setLoading(false);
     }
@@ -79,7 +93,7 @@ export function LoginPage({ onSuccess }: Props) {
         setForgotOpen(false);
       }
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Não foi possível enviar o e-mail.');
+      setErr(traduzirErro(ex instanceof Error ? ex.message : 'Não foi possível enviar o e-mail.'));
     } finally {
       setLoading(false);
     }
@@ -102,9 +116,13 @@ export function LoginPage({ onSuccess }: Props) {
         >
           <div className="text-center space-y-3">
             <GtechPayLogo className="w-32 h-32 mx-auto rounded-3xl object-cover shadow-xl ring-1 ring-cyan-500/20" />
-            <h1 className="text-xl font-black">{mode === 'signup' ? 'Criar conta admin' : 'Entrar no painel'}</h1>
+            <h1 className="text-xl font-black">{mode === 'signup' ? 'Criar conta de administrador' : 'Entrar no painel'}</h1>
             <p className="text-xs text-slate-400">
-              {cloud ? 'Login online com e-mail e senha.' : 'Modo local (sem nuvem configurada).'}
+              {cloud
+                ? inviteToken && mode === 'signup'
+                  ? 'Convite detectado — você entrará na loja do convite.'
+                  : 'Login online com e-mail e senha.'
+                : 'Modo local (sem nuvem configurada).'}
             </p>
           </div>
 
@@ -181,7 +199,7 @@ export function LoginPage({ onSuccess }: Props) {
                 <>
                   Primeira vez?{' '}
                   <button type="button" className="text-indigo-400 font-bold" onClick={() => setMode('signup')}>
-                    Criar conta admin
+                    Criar conta de administrador
                   </button>
                 </>
               )}
