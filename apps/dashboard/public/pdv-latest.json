@@ -1,0 +1,6 @@
+{
+  "versionCode": 10,
+  "versionName": "1.0.9",
+  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.9/app-debug.apk",
+  "notes": "Aumente versionCode no build.gradle ao publicar. Suba o APK no GitHub Releases e faça deploy do dashboard para publicar pdv-latest.json no GitHub Pages."
+}

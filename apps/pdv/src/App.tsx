@@ -22,6 +22,7 @@ import {
   removeVenda,
 } from './data/defaults';
 import { PrinterSettingsPanel, usePrinterState } from './components/PrinterPanel';
+import { UpdateSettingsPanel } from './components/UpdatePanel';
 import { SenhaSettingsPanel, useSenhaState } from './components/SenhaPanel';
 import { ComplementoItemModal, gruposComplementoDoProduto } from './components/ComplementoItemModal';
 import {
@@ -52,7 +53,7 @@ import {
 import { syncPendingSales } from './lib/syncSales';
 import { imprimirVenda } from './services/printService';
 
-type Tab = 'vendas' | 'recibos' | 'senha' | 'impressora';
+type Tab = 'vendas' | 'recibos' | 'senha' | 'impressora' | 'atualizar';
 type EtapaVenda = 'pedido' | 'pagamento';
 
 function App() {
@@ -673,7 +674,7 @@ function App() {
   return (
     <div className="h-full flex flex-col bg-slate-950">
       {toast && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border border-slate-600 px-4 py-2 rounded-xl text-xs font-bold">
+        <div className="fixed top-[max(0.75rem,env(safe-area-inset-top,0px))] left-1/2 -translate-x-1/2 z-50 bg-slate-800 border border-slate-600 px-4 py-2 rounded-xl text-xs font-bold">
           {toast}
         </div>
       )}
@@ -690,6 +691,7 @@ function App() {
               ['recibos', 'Recibos'],
               ['senha', 'Senha'],
               ['impressora', 'Impressora'],
+              ['atualizar', 'Atualizar'],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -750,6 +752,12 @@ function App() {
       {tab === 'impressora' && (
         <div className="flex-1 min-h-0 overflow-y-auto custom-scroll">
           <PrinterSettingsPanel loja={loja} config={printerConfig} onChange={setPrinterConfig} />
+        </div>
+      )}
+
+      {tab === 'atualizar' && (
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scroll">
+          <UpdateSettingsPanel />
         </div>
       )}
 

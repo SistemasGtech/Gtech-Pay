@@ -33,6 +33,15 @@ function cmdInit(): Uint8Array {
   return new Uint8Array([ESC, 0x40]);
 }
 
+/** Tabela PC437 — comum em MPT-II / impressoras 58mm chinesas em modo Latin */
+function cmdCharsetPc437(): Uint8Array {
+  return new Uint8Array([ESC, 0x74, 0]);
+}
+
+function cmdPrinterReady(): Uint8Array {
+  return concatBytes([cmdInit(), cmdCharsetPc437(), new Uint8Array([ESC, 0x32])]);
+}
+
 function cmdAlign(align: 'left' | 'center' | 'right'): Uint8Array {
   const n = align === 'left' ? 0 : align === 'center' ? 1 : 2;
   return new Uint8Array([ESC, 0x61, n]);
@@ -43,11 +52,13 @@ function cmdBold(on: boolean): Uint8Array {
 }
 
 function cmdTextLine(text: string): Uint8Array {
-  return concatBytes([encodeText(text), new Uint8Array([0x0a])]);
+  return concatBytes([encodeText(text), new Uint8Array([0x0d, 0x0a])]);
 }
 
-function cmdCut(): Uint8Array {
-  return new Uint8Array([GS, 0x56, 0x00]);
+function cmdCutPaper(feedLines = 4): Uint8Array {
+  const n = Math.min(255, Math.max(1, feedLines));
+  // Avanca papel e corte total (GS V 0) — acionam guilhotina na MPT-II e similares
+  return concatBytes([cmdFeed(n), new Uint8Array([GS, 0x56, 0x00])]);
 }
 
 function cmdFeed(lines = 3): Uint8Array {
@@ -77,7 +88,7 @@ function lineLeftRight(left: string, right: string, width: number): string {
 
 function buildViaProducao(venda: Venda, loja: LojaInfo, chars: number): Uint8Array {
   const parts: Uint8Array[] = [
-    cmdInit(),
+    cmdPrinterReady(),
     cmdAlign('center'),
     cmdBold(true),
     cmdTextLine('*** 1a VIA - PRODUCAO ***'),
@@ -111,7 +122,6 @@ function buildViaProducao(venda: Venda, loja: LojaInfo, chars: number): Uint8Arr
       cmdTextLine(lineLeftRight(`${it.quantidade}x ${it.nome}`, formatBrl(it.subtotal), chars)),
       cmdBold(false),
     );
-    parts.push(cmdTextLine(`  ${formatBrl(it.precoUnitario)}/un`));
     for (const o of it.opcoes) {
       const extra = o.preco > 0 ? ` +${formatBrl(o.preco)}` : '';
       parts.push(cmdTextLine(`  * ${o.nome}${extra}`));
@@ -138,22 +148,26 @@ function buildViaProducao(venda: Venda, loja: LojaInfo, chars: number): Uint8Arr
   return concatBytes(parts);
 }
 
-/** 2a via: somente numero da senha para o cliente */
-function buildViaCliente(venda: Venda): Uint8Array {
+/** 2a via: senha para o cliente + nome da empresa */
+function buildViaCliente(venda: Venda, loja: LojaInfo): Uint8Array {
   const senha = venda.senha?.trim();
   if (!senha) {
-    return concatBytes([cmdInit(), cmdFeed(1)]);
+    return concatBytes([cmdFeed(1)]);
   }
 
   return concatBytes([
-    cmdInit(),
     cmdAlign('center'),
-    cmdTextSize(3, 3),
+    cmdBold(true),
+    cmdTextLine(loja.nome),
+    cmdBold(false),
+    cmdTextLine('2a VIA - CLIENTE'),
+    cmdTextLine(''),
+    cmdTextSize(2, 2),
     cmdBold(true),
     cmdTextLine(`#${senha}`),
     cmdBold(false),
     cmdTextSize(1, 1),
-    cmdFeed(4),
+    cmdFeed(2),
   ]);
 }
 
@@ -163,14 +177,32 @@ export function buildTwoViaReceipt(venda: Venda, loja: LojaInfo, config: Printer
   const chunks: Uint8Array[] = [producao];
 
   if (venda.senha?.trim()) {
-    chunks.push(
-      concatBytes([cmdAlign('center'), cmdTextLine('- - - CORTE - - -'), cmdFeed(1)]),
-      buildViaCliente(venda),
-    );
+    chunks.push(cmdCutPaper(5), buildViaCliente(venda, loja));
   }
 
-  chunks.push(cmdCut(), cmdFeed(3));
+  chunks.push(cmdCutPaper(6));
   return concatBytes(chunks);
+}
+
+/** Cupom minimo para teste (MPT-II e similares) — poucos comandos ESC/POS */
+export function buildSimpleTestReceipt(loja: LojaInfo): Uint8Array {
+  return concatBytes([
+    cmdPrinterReady(),
+    cmdAlign('center'),
+    cmdBold(true),
+    cmdTextLine('GTech PDV'),
+    cmdTextLine('TESTE IMPRESSAO'),
+    cmdBold(false),
+    cmdTextLine(loja.nome),
+    cmdTextLine(''),
+    cmdAlign('left'),
+    cmdTextLine('Bluetooth OK'),
+    cmdTextLine('Senha #99'),
+    cmdTextLine('1x TESTE - R$ 1,00'),
+    cmdFeed(4),
+    cmdCutPaper(5),
+    cmdFeed(2),
+  ]);
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {

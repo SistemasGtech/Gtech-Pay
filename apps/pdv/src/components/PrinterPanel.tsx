@@ -3,17 +3,21 @@ import { Capacitor } from '@capacitor/core';
 import type { LojaInfo, PrinterConfig } from '@gtech/shared';
 import {
   DEFAULT_PRINTER_CONFIG,
+  diagnoseBluetoothPrinter,
   discoverNetworkPrinters,
   isValidBluetoothMac,
   listNativePrinters,
   loadPrinterConfig,
   normalizeMac,
-  requestBluetoothAccess,
-  requestPrinterPermissions,
+  openAndroidBluetoothSettings,
+  openAppPermissionSettings,
   savePrinterConfig,
   testarImpressora,
+  formatPrintError,
+  validateBluetoothMacForPrint,
   type ListedDevice,
 } from '../services/printService';
+import { syncAndroidBluetoothConnectPermission } from '../lib/bondedBluetooth';
 
 type Props = {
   loja: LojaInfo;
@@ -36,6 +40,8 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
   const [manualMac, setManualMac] = useState(config.bluetoothAddress);
+  const [diag, setDiag] = useState('');
+  const [pendingDevice, setPendingDevice] = useState<ListedDevice | null>(null);
   const native = Capacitor.isNativePlatform();
 
   useEffect(() => {
@@ -65,6 +71,7 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
       setMsg(error);
       return;
     }
+    setMsg(list.length ? `${list.length} aparelho(s). Toque na impressora → Confirmar impressora.` : '');
     if (native && list.length === 0) {
       setMsg(
         config.transport === 'usb'
@@ -76,13 +83,16 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
 
   const permitirBluetooth = async () => {
     setLoading(true);
-    setMsg('');
-    const err = await requestBluetoothAccess();
-    if (err) {
-      setMsg(err);
+    setMsg('Pedindo permissão Bluetooth…');
+    const ok = await syncAndroidBluetoothConnectPermission();
+    if (!ok) {
+      setMsg(
+        'Permissão não concedida. Configurações → Apps → Gtech PDV → Dispositivos por perto → Permitir. Depois force parar o app.',
+      );
       setLoading(false);
       return;
     }
+    setMsg('Permissão OK. Buscando aparelhos pareados…');
     await refreshDevices();
   };
 
@@ -92,6 +102,20 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
   }, [native, config.transport]);
 
   const selectDevice = (d: ListedDevice) => {
+    setPendingDevice(d);
+    setMsg(`Pré-seleção: ${d.name}. Toque em "Confirmar impressora" abaixo.`);
+  };
+
+  const confirmPrinterSelection = () => {
+    const d = pendingDevice;
+    if (!d) {
+      if (config.bluetoothAddress || config.deviceName) {
+        setMsg('Impressora já confirmada. Use "Imprimir cupom de teste" ou escolha outra na lista.');
+        return;
+      }
+      setMsg('Toque na impressora na lista "Dispositivos" e depois em Confirmar.');
+      return;
+    }
     if (d.transport === 'bluetooth') {
       onChange({
         ...config,
@@ -117,7 +141,22 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
         tcpPort: d.port ?? 9100,
       });
     }
-    setMsg(`Selecionada: ${d.name}`);
+    setPendingDevice(null);
+    setMsg(`Impressora confirmada: ${d.name}. Agora toque em "Imprimir cupom de teste".`);
+  };
+
+  const isDeviceActive = (d: ListedDevice) => {
+    if (pendingDevice?.id === d.id) return 'pending';
+    if (d.transport === 'bluetooth' && d.address && config.bluetoothAddress === d.address) return 'active';
+    if (
+      d.transport === 'usb' &&
+      d.vendorId === config.usbVendorId &&
+      d.productId === config.usbProductId
+    ) {
+      return 'active';
+    }
+    if (d.transport === 'tcp' && d.host && config.tcpHost === d.host) return 'active';
+    return null;
   };
 
   const applyManualMac = () => {
@@ -136,7 +175,12 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
   };
 
   const openBluetoothSettings = () => {
-    window.open('intent:#Intent;action=android.settings.BLUETOOTH_SETTINGS;end', '_system');
+    openAndroidBluetoothSettings();
+  };
+
+  const runDiagnose = async () => {
+    setDiag('Verificando…');
+    setDiag(await diagnoseBluetoothPrinter(config));
   };
 
   return (
@@ -148,6 +192,21 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
             ? 'Tablet: Bluetooth (SPP), USB OTG ou IP na rede. Pareie Bluetooth no Android antes de imprimir.'
             : 'No PC: modo navegador. No tablet use o APK instalado.'}
         </p>
+        {native && (
+          <p className="text-[10px] text-emerald-400 font-bold">
+            App nativo — APK 1.0.8 (precisa BLUETOOTH_CONNECT + BLUETOOTH_SCAN).
+          </p>
+        )}
+        {!native && (
+          <p className="text-xs text-red-400 font-bold leading-relaxed">
+            Você está no navegador: Bluetooth não funciona aqui. Instale o APK Gtech PDV no tablet.
+          </p>
+        )}
+        {native && config.transport === 'browser' && (
+          <p className="text-xs text-amber-400 font-bold">
+            Modo &quot;Navegador&quot; não lista impressoras. Escolha <strong>Bluetooth ESC/POS</strong> acima.
+          </p>
+        )}
       </div>
 
       <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 space-y-3">
@@ -251,10 +310,32 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
           <button
             type="button"
             onClick={openBluetoothSettings}
-            className="text-xs font-bold text-indigo-400 underline"
+            className="text-xs font-bold text-indigo-400 underline w-full text-left"
           >
             Abrir Ajustes Bluetooth do Android
           </button>
+          <button
+            type="button"
+            onClick={() => openAppPermissionSettings()}
+            className="text-xs font-bold text-indigo-400 underline w-full text-left"
+          >
+            Permissões do app Gtech PDV
+          </button>
+        </div>
+      )}
+
+      {native && config.transport === 'bluetooth' && (
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 space-y-2">
+          <button
+            type="button"
+            onClick={() => void runDiagnose()}
+            className="w-full py-2 bg-slate-900 border border-slate-600 rounded-xl text-xs font-bold text-slate-200"
+          >
+            Diagnóstico Bluetooth
+          </button>
+          {diag && (
+            <pre className="text-[10px] text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">{diag}</pre>
+          )}
         </div>
       )}
 
@@ -273,18 +354,53 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
           </div>
           {msg && <p className="text-xs text-amber-400">{msg}</p>}
           <div className="space-y-2 max-h-48 overflow-y-auto custom-scroll">
-            {devices.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => selectDevice(d)}
-                className="w-full text-left p-3 rounded-xl bg-slate-900 border border-slate-700 hover:border-indigo-500 text-sm"
-              >
-                <span className="font-bold block">{d.name}</span>
-                <span className="text-[10px] text-slate-400 uppercase">{d.transport}</span>
-              </button>
-            ))}
+            {devices.map((d) => {
+              const state = isDeviceActive(d);
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => selectDevice(d)}
+                  className={`w-full text-left p-3 rounded-xl bg-slate-900 border text-sm transition-colors ${
+                    state === 'pending'
+                      ? 'border-amber-400 ring-2 ring-amber-400/40'
+                      : state === 'active'
+                        ? 'border-emerald-500 ring-2 ring-emerald-500/30'
+                        : 'border-slate-700 hover:border-indigo-500'
+                  }`}
+                >
+                  <span className="font-bold block">{d.name}</span>
+                  <span className="text-[10px] text-slate-400 uppercase">
+                    {d.transport}
+                    {d.address ? ` · ${d.address}` : ''}
+                    {state === 'pending' ? ' · aguardando confirmar' : ''}
+                    {state === 'active' ? ' · confirmada' : ''}
+                  </span>
+                </button>
+              );
+            })}
           </div>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={confirmPrinterSelection}
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-black text-sm text-white"
+          >
+            Confirmar impressora
+          </button>
+        </div>
+      )}
+
+      {(config.deviceName || config.bluetoothAddress) && native && config.transport !== 'browser' && (
+        <div className="bg-emerald-500/15 border border-emerald-500/50 rounded-2xl p-4 space-y-1">
+          <p className="text-xs font-black text-emerald-300 uppercase">Impressora em uso no PDV</p>
+          <p className="text-sm font-bold text-white">
+            {config.deviceName || 'Bluetooth'}
+            {config.bluetoothAddress ? ` · ${config.bluetoothAddress}` : ''}
+          </p>
+          <p className="text-[11px] text-emerald-200/90">
+            Próximo passo: botão verde <strong>Imprimir cupom de teste</strong> no fim da tela.
+          </p>
         </div>
       )}
 
@@ -292,16 +408,16 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
         type="button"
         onClick={async () => {
           setMsg('');
-          const perm = await requestPrinterPermissions(config);
-          if (perm) {
-            setMsg(perm);
+          const macErr = validateBluetoothMacForPrint(config.bluetoothAddress);
+          if (macErr) {
+            setMsg(macErr);
             return;
           }
           try {
             await testarImpressora(loja, config);
             setMsg('Teste enviado. Verifique a impressora.');
           } catch (e) {
-            setMsg(e instanceof Error ? e.message : 'Falha ao imprimir teste.');
+            setMsg(formatPrintError(e));
           }
         }}
         className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-black text-sm"

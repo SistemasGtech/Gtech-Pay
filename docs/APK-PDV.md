@@ -4,7 +4,7 @@
 
 1. **Node** — já usado no projeto (`npm install` na raiz).
 2. **Android Studio** — instala o **Android SDK** e aceite as licenças.
-3. **Java 17+** — Capacitor 7 / Gradle recente preferem JDK 17. No Android Studio: **Settings → Build → Gradle → Gradle JDK → 17**.
+3. **Java para Gradle** — erro `major version 69` = Java 25 (JBR do Android Studio novo). Em `apps/pdv/android/gradle.properties` use **JDK 21** (ex.: Temurin em `C:\Program Files\Eclipse Adoptium\jdk-21.0.13.9-hotspot`). No Android Studio: **Gradle JDK → 21**, não o Embedded JBR 25.
 4. **`apps/pdv/.env.local`** — mesma `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` do dashboard (entram **no build** do APK).
 
 Opcional: `VITE_STORE_ID=<uuid-da-loja>` para já abrir conectado à loja.
@@ -80,3 +80,23 @@ Depois de atualizar o código do PDV, **gere um APK novo** (`cap sync` inclui o 
 No app: aba **Impressora** → pareie a impressora em **Ajustes → Bluetooth** → **Atualizar lista** ou **Salvar MAC** → **Imprimir cupom de teste**.
 
 Modos: **Bluetooth**, **USB OTG** ou **IP na rede** (porta 9100). Na raiz do projeto, após `npm install`, o script `link-pdv-plugins` liga o plugin nativo no monorepo.
+
+---
+
+## Atualizar o PDV pelo próprio app (tablet)
+
+1. No tablet: aba **Atualizar** → **Verificar atualização** → se houver versão nova, **Baixar e instalar**.
+2. O app consulta primeiro o **Supabase** (`pdv_get_app_update`) — mesma URL do `.env.local` do PDV. Opcional: `pdv-latest.json` no GitHub Pages após push na `main`. Campo manual na aba Atualizar sobrescreve tudo.
+3. **Publicar uma versão nova:**
+   - Em `apps/pdv/android/app/build.gradle`, aumente `versionCode` (inteiro, sempre maior) e `versionName`.
+   - Gere o APK (`npm run pdv:build`, `cap sync`, `assembleDebug` ou release).
+   - Crie um **GitHub Release** com tag (ex.: `pdv-1.0.9`) e anexe o APK; copie a URL direta do arquivo.
+   - Atualize `docs/pdv-latest.json` e/ou a linha em **`pdv_app_release`** no Supabase (`version_code`, `version_name`, `apk_url`).
+4. **Primeira vez com o botão:** instale manualmente um APK que já inclua o plugin `GtechAppUpdate` (versão com aba Atualizar). Depois disso, as próximas versões podem vir só pela aba.
+5. No Android 8+, na primeira instalação “por fora” da Play Store, aceite **Instalar apps desconhecidos** para o Gtech PDV quando o sistema pedir.
+
+---
+
+## Barra de status / barra de apps sobre o PDV
+
+Em tablets com **Android 15** e `targetSdk 35`, o sistema pode desenhar o app “por baixo” do relógio e dos botões de navegação. O PDV corrige isso no `MainActivity` (reserva espaço para as barras) e no CSS (`safe-area-inset`). Se ainda aparecer sobreposto, gere um **APK novo** após `cap sync`.

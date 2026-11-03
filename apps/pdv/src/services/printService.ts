@@ -1,7 +1,9 @@
 import type { PrinterConfig } from '@gtech/shared';
-import { buildTwoViaReceipt } from '@gtech/shared';
+import { buildTwoViaReceipt, buildSimpleTestReceipt, bytesToBase64 } from '@gtech/shared';
 import type { LojaInfo, Venda } from '@gtech/shared';
 import { Capacitor } from '@capacitor/core';
+import { ThermalPrinter } from '@devlas/capacitor-thermal-printer';
+import { listBondedBluetoothDevices, withTimeout, LIST_TIMEOUT_MS, ensureBondedBluetoothPermission, pingBondedBluetoothPlugin, isAndroidBluetoothConnectGranted, printBluetoothEscPos, probeBluetoothPrinterConnect } from '../lib/bondedBluetooth';
 
 export const PRINTER_STORAGE_KEY = 'gtech_printer_config';
 
@@ -11,7 +13,7 @@ export const DEFAULT_PRINTER_CONFIG: PrinterConfig = {
   bluetoothAddress: '',
   tcpHost: '',
   tcpPort: 9100,
-  larguraPapel: '80mm',
+  larguraPapel: '58mm',
   imprimirAutomatico: true,
 };
 
@@ -19,7 +21,11 @@ export function loadPrinterConfig(): PrinterConfig {
   try {
     const raw = localStorage.getItem(PRINTER_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_PRINTER_CONFIG };
-    return { ...DEFAULT_PRINTER_CONFIG, ...JSON.parse(raw) };
+    const merged = { ...DEFAULT_PRINTER_CONFIG, ...JSON.parse(raw) } as PrinterConfig;
+    if (Capacitor.isNativePlatform() && merged.transport === 'browser') {
+      merged.transport = 'bluetooth';
+    }
+    return merged;
   } catch {
     return { ...DEFAULT_PRINTER_CONFIG };
   }
@@ -50,48 +56,111 @@ export function isValidBluetoothMac(mac: string): boolean {
   return /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/i.test(normalizeMac(mac));
 }
 
-async function getThermalPrinter() {
-  const mod = await import('@devlas/capacitor-thermal-printer');
-  return { ThermalPrinter: mod.ThermalPrinter, bytesToBase64: mod.bytesToBase64 };
+function getThermalPrinter() {
+  return { ThermalPrinter };
 }
 
-const PERM_MAC_PLACEHOLDER = '00:11:22:33:44:55';
+export function openAndroidBluetoothSettings(): void {
+  if (Capacitor.getPlatform() !== 'android') return;
+  window.location.href = 'intent:#Intent;action=android.settings.BLUETOOTH_SETTINGS;end';
+}
+
+export function openAppPermissionSettings(): void {
+  if (Capacitor.getPlatform() !== 'android') return;
+  window.location.href =
+    'intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;scheme=package;package=com.gtech.pdv;end';
+}
+
+/** Texto de diagnóstico (Bluetooth pareados no Android). */
+export async function diagnoseBluetoothPrinter(config?: PrinterConfig): Promise<string> {
+  const lines: string[] = [
+    `App: ${Capacitor.getPlatform()} (nativo=${Capacitor.isNativePlatform()})`,
+    `Build JS impressão: 1.0.8`,
+  ];
+  if (!Capacitor.isNativePlatform()) {
+    lines.push('Instale o APK Gtech PDV — Chrome nao lista Bluetooth.');
+    return lines.join('\n');
+  }
+  if (config?.transport === 'bluetooth') {
+    const mac = normalizeMac(config.bluetoothAddress?.trim() ?? '');
+    lines.push(`MAC salvo no app: ${mac || '(vazio — confirme a impressora)'}`);
+    lines.push(`MAC valido: ${mac && isValidBluetoothMac(mac) ? 'sim' : 'nao'}`);
+  }
+  const ping = await pingBondedBluetoothPlugin();
+  lines.push(ping ? `Plugin nativo: v${ping.version} (precisa v8+)` : 'Plugin nativo: AUSENTE no APK');
+  lines.push(
+    (await isAndroidBluetoothConnectGranted())
+      ? 'BLUETOOTH_CONNECT + SCAN (Android): OK para imprimir'
+      : 'BLUETOOTH: falta CONNECT ou SCAN — libere as duas em Permissoes do app',
+  );
+  try {
+    const bonded = await listBondedBluetoothDevices();
+    lines.push(`Lista nativa — pareados: ${bonded.length}`);
+    for (const d of bonded) {
+      lines.push(`• ${d.name} — ${d.address}`);
+    }
+  } catch (e) {
+    lines.push(`Lista nativa: ${e instanceof Error ? e.message : e}`);
+  }
+  if (config?.bluetoothAddress && isValidBluetoothMac(normalizeMac(config.bluetoothAddress))) {
+    const mac = normalizeMac(config.bluetoothAddress);
+    lines.push('--- Teste conexao SPP (sem imprimir cupom) ---');
+    lines.push(await probeBluetoothPrinterConnect(mac));
+  }
+  return lines.join('\n');
+}
+
+
+export function formatPrintError(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  if (/not implemented|unimplemented|ausente no APK/i.test(raw)) {
+    return `${raw} — Reinstale APK 1.0.6 (npm run pdv:build, cap sync, assembleDebug). Desinstale o app antigo antes.`;
+  }
+  if (/BLUETOOTH_SCAN|permission_denied|BLUETOOTH_CONNECT|Permissao Bluetooth/i.test(raw)) {
+    return `${raw} — Configurações → Apps → Gtech PDV → Permissões: ative Dispositivos por perto E Buscar dispositivos Bluetooth. Force parar o app e teste de novo.`;
+  }
+  if (/connect_failed|Bluetooth desligado|RFCOMM|read failed|socket/i.test(raw)) {
+    return `Conexão com a impressora falhou: ${raw}. Impressora ligada, pareada e perto do tablet?`;
+  }
+  if (/Confirme a impressora|MAC/i.test(raw)) {
+    return raw;
+  }
+  return raw || 'Falha ao imprimir teste.';
+}
+
+export function validateBluetoothMacForPrint(bluetoothAddress: string): string | null {
+  const mac = normalizeMac(bluetoothAddress.trim());
+  if (!bluetoothAddress.trim() || !isValidBluetoothMac(mac)) {
+    return 'Confirme a impressora: toque nela na lista e em Confirmar impressora (ou Salvar MAC).';
+  }
+  return null;
+}
+
+/** Valida MAC antes de imprimir (não usa plugin térmico — evita falso erro de permissão). */
+export async function ensureBluetoothReadyForPrint(bluetoothAddress: string): Promise<string | null> {
+  return validateBluetoothMacForPrint(bluetoothAddress);
+}
 
 export async function requestBluetoothAccess(): Promise<string | null> {
   if (!Capacitor.isNativePlatform()) return null;
-  try {
-    const { ThermalPrinter } = await getThermalPrinter();
-    const perm = await ThermalPrinter.requestPermission({
-      transport: 'bluetooth',
-      address: PERM_MAC_PLACEHOLDER,
-    });
-    if (!perm.granted) {
-      return 'Permissão Bluetooth negada. Ajustes → Apps → Gtech PDV → Permissões → Dispositivos por perto.';
-    }
-    return null;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (/unimplemented|solo android/i.test(msg)) {
-      return 'App sem plugin de impressora. Gere e instale o APK novo (npm run pdv:build + cap sync).';
-    }
-    return msg || 'Erro ao pedir permissão Bluetooth.';
+  if (Capacitor.getPlatform() === 'android') {
+    if (await isAndroidBluetoothConnectGranted()) return null;
+    const err = await ensureBondedBluetoothPermission();
+    if (await isAndroidBluetoothConnectGranted()) return null;
+    return err;
   }
+  return null;
 }
 
 export async function requestPrinterPermissions(config: PrinterConfig): Promise<string | null> {
   if (!Capacitor.isNativePlatform() || config.transport === 'browser') return null;
+
+  if (config.transport === 'bluetooth') {
+    return validateBluetoothMacForPrint(config.bluetoothAddress);
+  }
+
   try {
-    const { ThermalPrinter } = await getThermalPrinter();
-    if (config.transport === 'bluetooth') {
-      const address = config.bluetoothAddress.trim()
-        ? normalizeMac(config.bluetoothAddress)
-        : PERM_MAC_PLACEHOLDER;
-      if (config.bluetoothAddress.trim() && !isValidBluetoothMac(address)) {
-        return 'Informe o MAC Bluetooth (pareie antes em Ajustes → Bluetooth).';
-      }
-      const perm = await ThermalPrinter.requestPermission({ transport: 'bluetooth', address });
-      return perm.granted ? null : 'Permissão Bluetooth negada. Ative em Ajustes do Android.';
-    }
+    const { ThermalPrinter } = getThermalPrinter();
     if (config.transport === 'usb') {
       if (config.usbVendorId == null || config.usbProductId == null) {
         return 'Selecione uma impressora USB na lista.';
@@ -114,7 +183,7 @@ export async function requestPrinterPermissions(config: PrinterConfig): Promise<
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erro ao pedir permissão da impressora.';
     if (/unimplemented|solo android/i.test(msg)) {
-      return 'App sem plugin de impressora. Reinstale o APK atualizado.';
+      return 'App sem plugin de impressora USB/rede. Reinstale o APK atualizado.';
     }
     return msg;
   }
@@ -126,25 +195,63 @@ export async function listNativePrinters(
 ): Promise<{ devices: ListedDevice[]; error?: string }> {
   if (!Capacitor.isNativePlatform()) return { devices: [] };
   try {
-    const { ThermalPrinter } = await getThermalPrinter();
-
-    if (transport === 'bluetooth' || transport === 'all') {
-      const accessErr = await requestBluetoothAccess();
-      if (accessErr) return { devices: [], error: accessErr };
-    }
-
+    const { ThermalPrinter } = getThermalPrinter();
     const devices: ListedDevice[] = [];
 
     if (transport === 'bluetooth' || transport === 'all') {
-      const bt = await ThermalPrinter.list({ transport: 'bluetooth' });
-      for (const d of bt.devices ?? []) {
-        if (!d.address) continue;
-        devices.push({
-          id: `bt:${d.address}`,
-          name: d.name ?? d.address,
-          transport: 'bluetooth',
-          address: d.address,
-        });
+      let listError: string | undefined;
+
+      if (Capacitor.getPlatform() === 'android') {
+        const permErr = await ensureBondedBluetoothPermission();
+        if (permErr && devices.length === 0) {
+          /* tenta listar mesmo assim — permissão pode estar OK no Android */
+        }
+
+        try {
+          const bonded = await listBondedBluetoothDevices();
+          for (const d of bonded) {
+            devices.push({
+              id: `bt:${d.address}`,
+              name: d.name || d.address,
+              transport: 'bluetooth',
+              address: d.address,
+            });
+          }
+        } catch (e) {
+          listError = e instanceof Error ? e.message : 'Falha na lista nativa';
+          console.warn('listBondedBluetoothDevices', e);
+        }
+      }
+
+      if (devices.length === 0) {
+        await requestBluetoothAccess();
+        try {
+          let bt = await withTimeout(
+            ThermalPrinter.list({ transport: 'bluetooth' }),
+            LIST_TIMEOUT_MS,
+            'Lista',
+          );
+          if ((bt.devices?.length ?? 0) === 0) {
+            await new Promise((r) => setTimeout(r, 400));
+            bt = await ThermalPrinter.list({ transport: 'bluetooth' });
+          }
+          for (const d of bt.devices ?? []) {
+            if (!d.address) continue;
+            devices.push({
+              id: `bt:${d.address}`,
+              name: d.name ?? d.address,
+              transport: 'bluetooth',
+              address: d.address,
+            });
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Falha plugin térmico';
+          listError = listError ? `${listError} | ${msg}` : msg;
+        }
+      }
+
+      if (devices.length === 0 && listError) {
+        return { devices: [], error: listError };
       }
     }
 
@@ -207,7 +314,6 @@ function htmlViaProducao(venda: Venda, loja: LojaInfo): string {
         <span>${it.quantidade}x ${it.nome}</span>
         <span>${formatBrlHtml(it.subtotal)}</span>
       </div>
-      <div style="font-size:10px;color:#333;padding-left:4px;">${formatBrlHtml(it.precoUnitario)}/un</div>
       ${it.opcoes.map((o) => `<div style="font-size:11px;padding-left:8px;font-weight:bold;">• ${o.nome}${o.preco > 0 ? ` (+${formatBrlHtml(o.preco)})` : ''}</div>`).join('')}
       ${it.observacao ? `<div style="font-weight:900;margin-top:4px;font-size:11px;">OBS: ${it.observacao}</div>` : ''}
     </div>`,
@@ -247,13 +353,14 @@ function htmlViaProducao(venda: Venda, loja: LojaInfo): string {
     </div>`;
 }
 
-function htmlViaCliente(venda: Venda): string {
+function htmlViaCliente(venda: Venda, loja: LojaInfo): string {
   const senha = venda.senha?.trim();
   if (!senha) return '';
 
   return `
-    <div style="margin:16px 0;padding:12px 0;text-align:center;border-top:2px dashed #000;border-bottom:2px dashed #000;">
-      <div style="font-size:10px;font-weight:bold;margin-bottom:8px;">— CORTE — 2ª VIA CLIENTE —</div>
+    <div style="margin:16px 0;padding:12px 0;text-align:center;border-top:2px dashed #000;">
+      <div style="font-weight:900;font-size:14px;">${loja.nome}</div>
+      <div style="font-size:10px;font-weight:bold;margin:6px 0;">2ª VIA — CLIENTE</div>
       <div style="font-size:56px;font-weight:900;line-height:1;letter-spacing:2px;">#${senha}</div>
     </div>`;
 }
@@ -267,28 +374,31 @@ function printViaBrowser(venda: Venda, loja: LojaInfo, config: PrinterConfig): v
   area.innerHTML = `
     <div style="font-family:monospace;padding:4mm;">
       ${htmlViaProducao(venda, loja)}
-      ${htmlViaCliente(venda)}
+      ${htmlViaCliente(venda, loja)}
     </div>`;
 
   setTimeout(() => window.print(), 150);
 }
 
 async function printViaNative(venda: Venda, loja: LojaInfo, config: PrinterConfig): Promise<void> {
-  const { ThermalPrinter, bytesToBase64: b64 } = await getThermalPrinter();
+  const { ThermalPrinter } = getThermalPrinter();
   const data = buildTwoViaReceipt(venda, loja, config);
-  const payload = b64(data);
-
-  const permErr = await requestPrinterPermissions(config);
-  if (permErr) throw new Error(permErr);
+  const payload = bytesToBase64(data);
 
   if (config.transport === 'bluetooth') {
+    const macErr = validateBluetoothMacForPrint(config.bluetoothAddress);
+    if (macErr) throw new Error(macErr);
     const address = normalizeMac(config.bluetoothAddress);
-    if (!isValidBluetoothMac(address)) {
-      throw new Error('Selecione a impressora ou digite o MAC Bluetooth (AA:BB:CC:DD:EE:FF).');
+    if (Capacitor.getPlatform() === 'android') {
+      await printBluetoothEscPos(address, payload);
+      return;
     }
     await ThermalPrinter.print({ transport: 'bluetooth', address, data: payload });
     return;
   }
+
+  const permErr = await requestPrinterPermissions(config);
+  if (permErr) throw new Error(permErr);
 
   if (config.transport === 'usb') {
     if (config.usbVendorId == null || config.usbProductId == null) {
@@ -331,6 +441,18 @@ export async function imprimirVenda(
 }
 
 export async function testarImpressora(loja: LojaInfo, config: PrinterConfig): Promise<void> {
+  if (
+    Capacitor.isNativePlatform() &&
+    Capacitor.getPlatform() === 'android' &&
+    config.transport === 'bluetooth'
+  ) {
+    const macErr = validateBluetoothMacForPrint(config.bluetoothAddress);
+    if (macErr) throw new Error(macErr);
+    const payload = bytesToBase64(buildSimpleTestReceipt(loja));
+    await printBluetoothEscPos(normalizeMac(config.bluetoothAddress), payload);
+    return;
+  }
+
   const agora = new Date();
   const vendaTeste: Venda = {
     id: 'test',
