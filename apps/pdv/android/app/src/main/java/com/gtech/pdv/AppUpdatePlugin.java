@@ -59,6 +59,7 @@ public class AppUpdatePlugin extends Plugin {
                 conn.setReadTimeout(30_000);
                 conn.setInstanceFollowRedirects(true);
                 conn.setRequestProperty("Accept", "application/json");
+                conn.setRequestProperty("Cache-Control", "no-cache");
                 conn.connect();
                 int code = conn.getResponseCode();
                 InputStream in = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
@@ -126,7 +127,9 @@ public class AppUpdatePlugin extends Plugin {
         conn.connect();
         int code = conn.getResponseCode();
         if (code < 200 || code >= 300) {
-            throw new Exception("Download HTTP " + code);
+            throw new Exception(
+                "Download HTTP " + code + ". O APK nao esta no GitHub Releases? Crie a release e anexe o app-debug.apk."
+            );
         }
         File dir = getContext().getCacheDir();
         File out = new File(dir, "gtech-pdv-update.apk");

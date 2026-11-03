@@ -1,6 +1,6 @@
 {
   "appId": "com.gtech.pdv",
-  "appName": "Gtech PDV",
+  "appName": "Gtech Pay",
   "webDir": "dist",
   "android": {
     "allowMixedContent": true,

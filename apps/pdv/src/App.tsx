@@ -25,6 +25,13 @@ import { PrinterSettingsPanel, usePrinterState } from './components/PrinterPanel
 import { UpdateSettingsPanel } from './components/UpdatePanel';
 import { SenhaSettingsPanel, useSenhaState } from './components/SenhaPanel';
 import { ComplementoItemModal, gruposComplementoDoProduto } from './components/ComplementoItemModal';
+import { PdvLoginPanel } from './components/PdvLoginPanel';
+import {
+  getCurrentStoreIdFromAuth,
+  getPdvAuthSession,
+  operadorFromAuthUser,
+  signOutPdv,
+} from './lib/pdvAuth';
 import {
   fetchPdvBootstrap,
   formatPdvError,
@@ -34,7 +41,6 @@ import {
   saveConfiguredStoreId,
   syncSenhaConfigRemote,
   verifyOperadorPin,
-  PDV_STORE_ID_KEY,
 } from './lib/pdvApi';
 import {
   addPendingSale,
@@ -60,9 +66,9 @@ function App() {
   const [storeId, setStoreId] = useState<string | null>(() =>
     isPdvCloudEnabled ? getConfiguredStoreId() : null,
   );
-  const [needsSetup, setNeedsSetup] = useState(isPdvCloudEnabled && !getConfiguredStoreId());
-  const [setupInput, setSetupInput] = useState('');
-  const [bootLoading, setBootLoading] = useState(isPdvCloudEnabled && Boolean(getConfiguredStoreId()));
+  const [needsAuthLogin, setNeedsAuthLogin] = useState(false);
+  const [authChecking, setAuthChecking] = useState(isPdvCloudEnabled);
+  const [bootLoading, setBootLoading] = useState(false);
   const [bootError, setBootError] = useState('');
   const [cloudReady, setCloudReady] = useState(false);
 
@@ -151,7 +157,6 @@ function App() {
       saveSenhaConfig(data.senhaConfig);
       setVendas(mergeVendasForDisplay(data.vendas, loadVendas()));
       setStoreId(sid);
-      setNeedsSetup(false);
       setCloudReady(true);
       setPendingCount(countPendingSales());
     },
@@ -243,35 +248,62 @@ function App() {
   loadCloudRef.current = loadCloud;
   const runSyncRef = useRef(runSync);
   runSyncRef.current = runSync;
+
+  const startCloudSession = useCallback(async () => {
+    if (!isPdvCloudEnabled) return;
+    setBootError('');
+    try {
+      const session = await getPdvAuthSession();
+      if (!session?.user) {
+        setNeedsAuthLogin(true);
+        setUsuario(null);
+        setCloudReady(false);
+        return;
+      }
+      setNeedsAuthLogin(false);
+      const sid = await getCurrentStoreIdFromAuth();
+      if (!sid) {
+        setBootError('Conta sem loja vinculada. Cadastre-se no dashboard com o mesmo e-mail.');
+        setCloudReady(false);
+        return;
+      }
+      saveConfiguredStoreId(sid);
+      setUsuario(operadorFromAuthUser(session.user));
+      if (isOnline()) {
+        await loadCloudRef.current(sid);
+      } else if (loadFromCache(sid)) {
+        notify('Modo offline — dados salvos no tablet');
+      } else {
+        setBootError('Sem internet e sem dados locais. Conecte uma vez após entrar.');
+        setCloudReady(false);
+      }
+    } catch (e) {
+      setBootError(formatPdvError(e));
+      setCloudReady(false);
+      if (String(formatPdvError(e)).toLowerCase().includes('jwt') || String(e).includes('session')) {
+        setNeedsAuthLogin(true);
+      }
+    }
+  }, [loadFromCache, notify]);
+
+  const startCloudSessionRef = useRef(startCloudSession);
+  startCloudSessionRef.current = startCloudSession;
   const bootstrappedRef = useRef(false);
 
   useEffect(() => {
     if (!isPdvCloudEnabled || bootstrappedRef.current) return;
     bootstrappedRef.current = true;
-    const sid = getConfiguredStoreId();
-    if (!sid) {
-      setNeedsSetup(true);
-      setBootLoading(false);
-      return;
-    }
-    if (isOnline()) void loadCloudRef.current(sid);
-    else {
-      setBootLoading(true);
-      loadFromCache(sid);
-      setBootLoading(false);
-    }
-  }, [loadFromCache]);
+    void startCloudSessionRef.current().finally(() => setAuthChecking(false));
+  }, []);
 
   useEffect(() => {
-    if (needsSetup || bootLoading) return;
-    const sid = storeId ?? (isPdvCloudEnabled ? getConfiguredStoreId() : null);
-    if (isPdvCloudEnabled && !sid) return;
+    if (needsAuthLogin || authChecking || bootLoading) return;
+    if (isPdvCloudEnabled) return;
     const session = loadPdvSession();
     if (!session) return;
-    if (isPdvCloudEnabled && session.storeId !== sid) return;
     const op = operadores.find((o) => o.id === session.operadorId);
     if (op) setUsuario(op);
-  }, [needsSetup, bootLoading, storeId, operadores]);
+  }, [needsAuthLogin, authChecking, bootLoading, operadores]);
 
   useEffect(() => {
     if (!isPdvCloudEnabled) return;
@@ -350,7 +382,7 @@ function App() {
       troco: trocoVenda,
       itens: [...carrinho],
       total,
-      operadorId: usuario.id,
+      operadorId: isPdvCloudEnabled ? '' : usuario.id,
       operadorNome: usuario.nome,
     };
 
@@ -464,40 +496,24 @@ function App() {
     submitPin(pin, true);
   };
 
-  if (needsSetup) {
+  if (isPdvCloudEnabled && authChecking) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-slate-950">
-        <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
-          <div className="text-center">
-            <p className="text-indigo-400 text-[11px] font-black uppercase">Gtech PDV</p>
-            <h1 className="font-black text-lg uppercase">Conectar loja</h1>
-            <p className="text-xs text-slate-400 mt-2">
-              Cole o ID da loja copiado no dashboard (menu Loja).
-            </p>
-          </div>
-          <input
-            value={setupInput}
-            onChange={(e) => setSetupInput(e.target.value)}
-            placeholder="UUID da loja"
-            className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs font-mono"
-          />
-          {bootError && <p className="text-red-400 text-xs text-center font-bold">{bootError}</p>}
-          {!isPdvCloudEnabled && (
-            <p className="text-amber-400 text-xs text-center font-bold">
-              Supabase não configurado. Crie <code className="text-amber-200">apps/pdv/.env.local</code> e reinicie{' '}
-              <code className="text-amber-200">npm run pdv</code>.
-            </p>
-          )}
-          <button
-            type="button"
-            disabled={!normalizeStoreId(setupInput) || bootLoading || !isPdvCloudEnabled}
-            onClick={() => void loadCloud(setupInput)}
-            className="w-full py-3 rounded-2xl bg-indigo-600 disabled:bg-slate-700 font-black text-xs uppercase"
-          >
-            {bootLoading ? 'Conectando…' : 'Salvar e carregar'}
-          </button>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-sm font-bold text-slate-400">
+        Verificando sessão…
       </div>
+    );
+  }
+
+  if (isPdvCloudEnabled && needsAuthLogin) {
+    return (
+      <PdvLoginPanel
+        error={bootError || undefined}
+        loading={bootLoading}
+        onSuccess={() => {
+          setAuthChecking(true);
+          void startCloudSession().finally(() => setAuthChecking(false));
+        }}
+      />
     );
   }
 
@@ -517,12 +533,15 @@ function App() {
           <button
             type="button"
             onClick={() => {
-              setNeedsSetup(true);
+              void signOutPdv();
+              setNeedsAuthLogin(true);
               setBootError('');
+              setCloudReady(false);
+              setUsuario(null);
             }}
             className="px-4 py-2 bg-slate-800 rounded-xl text-xs font-bold"
           >
-            Reconfigurar ID da loja
+            Sair e entrar de novo
           </button>
         </div>
       </div>
@@ -530,6 +549,13 @@ function App() {
   }
 
   if (!usuario) {
+    if (isPdvCloudEnabled) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-sm font-bold text-slate-400">
+          Carregando…
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-slate-950">
         <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
@@ -543,56 +569,25 @@ function App() {
           {erroLogin && <p className="text-red-400 text-xs text-center font-bold">{erroLogin}</p>}
           {!pinOp ? (
             <div className="space-y-2">
-              {isPdvCloudEnabled && storeId && cloudReady && operadores.length === 0 ? (
-                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/40 space-y-3 text-center">
-                  <p className="text-sm font-black text-amber-200">Loja conectada, mas sem operadores</p>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    No <strong>dashboard</strong> (login com e-mail na nuvem), vá em <strong>Operadores</strong>, crie
-                    um operador com <strong>PIN de 4 dígitos</strong> e salve. Depois toque em Atualizar aqui.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => void loadCloud(storeId)}
-                    disabled={bootLoading}
-                    className="w-full py-2.5 bg-indigo-600 rounded-xl text-xs font-bold disabled:opacity-50"
+              {operadores.map((op) => (
+                <button
+                  key={op.id}
+                  type="button"
+                  onClick={() => {
+                    setPinOp(op);
+                    setErroLogin('');
+                  }}
+                  className="w-full flex items-center gap-3 p-3 rounded-2xl bg-slate-800 border border-slate-700"
+                >
+                  <span
+                    className="w-10 h-10 rounded-xl font-black text-xs flex items-center justify-center text-white"
+                    style={{ backgroundColor: op.cor }}
                   >
-                    {bootLoading ? 'Atualizando…' : 'Atualizar lista de operadores'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      localStorage.removeItem(PDV_STORE_ID_KEY);
-                      setStoreId(null);
-                      setCloudReady(false);
-                      setNeedsSetup(true);
-                      setSetupInput('');
-                    }}
-                    className="text-[11px] text-slate-500 font-bold"
-                  >
-                    Trocar ID da loja
-                  </button>
-                </div>
-              ) : (
-                operadores.map((op) => (
-                  <button
-                    key={op.id}
-                    type="button"
-                    onClick={() => {
-                      setPinOp(op);
-                      setErroLogin('');
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl bg-slate-800 border border-slate-700"
-                  >
-                    <span
-                      className="w-10 h-10 rounded-xl font-black text-xs flex items-center justify-center text-white"
-                      style={{ backgroundColor: op.cor }}
-                    >
-                      {op.iniciais}
-                    </span>
-                    <span className="font-bold text-sm">{op.nome}</span>
-                  </button>
-                ))
-              )}
+                    {op.iniciais}
+                  </span>
+                  <span className="font-bold text-sm">{op.nome}</span>
+                </button>
+              ))}
             </div>
           ) : (
             <div className="space-y-3">
@@ -681,7 +676,7 @@ function App() {
 
       <header className="shrink-0 flex flex-wrap gap-2 items-center justify-between p-2 border-b border-slate-800 bg-slate-900">
         <div>
-          <p className="text-[10px] text-indigo-400 font-black uppercase">Gtech PDV</p>
+          <p className="text-[10px] text-cyan-400/90 font-black uppercase tracking-wider">Gtech Pay</p>
           <p className="text-xs font-bold truncate max-w-[200px]">{usuario.nome}</p>
         </div>
         <nav className="flex flex-wrap gap-1">
@@ -714,6 +709,11 @@ function App() {
               setEtapaVenda('pedido');
               clearPdvSession();
               setUsuario(null);
+              if (isPdvCloudEnabled) {
+                void signOutPdv();
+                setNeedsAuthLogin(true);
+                setCloudReady(false);
+              }
             }}
             className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold border border-red-500/40 text-red-400"
           >

@@ -18,7 +18,9 @@ export const PDV_STORE_ID_KEY = 'gtech_pdv_store_id';
 export const isPdvCloudEnabled = Boolean(url && anonKey);
 
 export const supabase: SupabaseClient | null = isPdvCloudEnabled
-  ? createClient(url!, anonKey!, { auth: { persistSession: false, autoRefreshToken: false } })
+  ? createClient(url!, anonKey!, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+    })
   : null;
 
 const UUID_IN_TEXT =

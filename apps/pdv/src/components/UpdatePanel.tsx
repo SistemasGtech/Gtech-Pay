@@ -83,7 +83,7 @@ export function UpdateSettingsPanel() {
       const text = e instanceof Error ? e.message : 'Falha no download.';
       setMsg(text);
       setErrorDetail(
-        'Confira se o link apkUrl no JSON aponta para um APK público (ex.: GitHub Releases).',
+        'Confira se o link apkUrl no JSON aponta para um APK público (ex.: GitHub Releases). HTTP 404 = release ainda não criada ou nome do arquivo errado.',
       );
     } finally {
       setLoading(false);

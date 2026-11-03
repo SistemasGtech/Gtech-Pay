@@ -65,11 +65,11 @@ npm run pdv:apk
 
 ## No tablet (primeira vez)
 
-1. Abra o app → cole o **ID da loja** (dashboard → Loja) se não usou `VITE_STORE_ID`.
-2. Operador + PIN → **Salvar PIN** (com internet uma vez).
+1. Abra o **Gtech PDV** → entre com o **mesmo e-mail e senha** do dashboard (Supabase).
+2. A loja é vinculada automaticamente à sua conta (não precisa colar UUID).
 3. Impressora: aba **Impressora** no PDV.
 
-O app fala com **Supabase**, não com a URL do GitHub Pages.
+O app usa **Supabase com sessão autenticada** (mais seguro que só ID da loja + PIN).
 
 ---
 

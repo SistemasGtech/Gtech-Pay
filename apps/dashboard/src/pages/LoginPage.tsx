@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { isSupabaseEnabled } from '../lib/authSupabase';
 import { resetPassword, signInWithEmail, signUpAdmin } from '../lib/authSupabase';
 import { resetAdminPasswordToDefault, validateAdminLogin, DEFAULT_ADMIN_PASSWORD, DEFAULT_ADMIN_USER } from '../auth';
+import { GtechPayLogo } from '../components/GtechPayLogo';
 
 type Props = {
   onSuccess: () => void;
@@ -99,8 +100,8 @@ export function LoginPage({ onSuccess }: Props) {
           onSubmit={mode === 'signup' ? submitSignup : submitLogin}
           className="bg-slate-900/90 backdrop-blur-sm border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-4"
         >
-          <div className="text-center space-y-2">
-            <p className="text-indigo-400 text-[11px] font-black uppercase tracking-widest">Gtech — Dashboard</p>
+          <div className="text-center space-y-3">
+            <GtechPayLogo className="w-32 h-32 mx-auto rounded-3xl object-cover shadow-xl ring-1 ring-cyan-500/20" />
             <h1 className="text-xl font-black">{mode === 'signup' ? 'Criar conta admin' : 'Entrar no painel'}</h1>
             <p className="text-xs text-slate-400">
               {cloud ? 'Login online com e-mail e senha.' : 'Modo local (sem nuvem configurada).'}
