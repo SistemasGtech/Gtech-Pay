@@ -22,11 +22,14 @@ import {
   persistVenda,
   PRODUTOS_PADRAO,
   removeVenda,
+  replaceVenda,
 } from './data/defaults';
 import { PrinterSettingsPanel, usePrinterState } from './components/PrinterPanel';
 import { UpdateSettingsPanel } from './components/UpdatePanel';
 import { SenhaSettingsPanel, useSenhaState } from './components/SenhaPanel';
 import { ComplementoItemModal, gruposComplementoDoProduto } from './components/ComplementoItemModal';
+import { EditVendaModal } from './components/EditVendaModal';
+import { ConfirmDialog } from './components/ConfirmDialog';
 import { BootSplash } from './components/BootSplash';
 import { PdvLoginPanel } from './components/PdvLoginPanel';
 import {
@@ -44,6 +47,8 @@ import {
   normalizeStoreId,
   saveConfiguredStoreId,
   syncSenhaConfigRemote,
+  updateSaleRemote,
+  deleteSaleRemote,
   verifyOperadorPin,
 } from './lib/pdvApi';
 import {
@@ -65,6 +70,9 @@ import {
   subscribeConnectivity,
   startNetworkMonitoring,
   getConnectivityState,
+  upsertPendingSale,
+  isVendaPending,
+  removePendingSale,
 } from './lib/offlineStore';
 import { syncPendingSales } from './lib/syncSales';
 import { imprimirVenda } from './services/printService';
@@ -96,6 +104,8 @@ function App() {
   );
   const [loja, setLoja] = useState<LojaInfo>(loadLoja);
   const [itemModal, setItemModal] = useState<ItemModalState | null>(null);
+  const [vendaEditando, setVendaEditando] = useState<Venda | null>(null);
+  const [vendaExcluir, setVendaExcluir] = useState<Venda | null>(null);
 
   const [tab, setTab] = useState<Tab>('vendas');
   const [pinOp, setPinOp] = useState<Operador | null>(null);
@@ -534,6 +544,86 @@ function App() {
     }
   };
 
+  const salvarVendaEditada = async (updated: Venda, reprint: boolean) => {
+    if (isPdvCloudEnabled && storeId) {
+      const pending = isVendaPending(updated.id);
+      if (!getNetworkConnected()) {
+        if (!pending) {
+          notify('Conecte à internet para editar recibo já enviado.');
+          return;
+        }
+        upsertPendingSale(updated);
+        setVendas(syncVendasDisplayFromServer(serverVendasRef.current));
+        setPendingCount(countPendingSales());
+        notify('Alteração salva offline (venda ainda não enviada).');
+      } else if (pending) {
+        upsertPendingSale(updated);
+        setVendas(syncVendasDisplayFromServer(serverVendasRef.current));
+        setPendingCount(countPendingSales());
+        const result = await syncPendingSales(storeId, applyDailyReset(senhaConfig));
+        setPendingCount(result.remaining);
+        await refreshVendasFromCloud(storeId);
+        notify('Recibo atualizado');
+      } else {
+        try {
+          await updateSaleRemote(storeId, updated);
+          removePendingSale(updated.id);
+          await refreshVendasFromCloud(storeId);
+          notify('Recibo atualizado');
+        } catch (e) {
+          notify(formatPdvError(e));
+          return;
+        }
+      }
+    } else {
+      setVendas(replaceVenda(updated));
+      notify('Recibo atualizado');
+    }
+    setVendaEditando(null);
+    if (reprint) {
+      try {
+        await imprimirVenda(updated, loja, printerConfig);
+      } catch (e) {
+        notify(e instanceof Error ? e.message : 'Erro ao imprimir');
+      }
+    }
+  };
+
+  const confirmarExcluirVenda = async () => {
+    const v = vendaExcluir;
+    if (!v) return;
+    setVendaExcluir(null);
+    if (isPdvCloudEnabled && storeId) {
+      const pending = isVendaPending(v.id);
+      if (!getNetworkConnected() && !pending) {
+        notify('Conecte à internet para excluir recibo já enviado.');
+        return;
+      }
+      if (pending) {
+        removePendingSale(v.id);
+        setVendas(syncVendasDisplayFromServer(serverVendasRef.current));
+        setPendingCount(countPendingSales());
+        notify('Recibo removido');
+        return;
+      }
+      if (!getNetworkConnected()) {
+        notify('Sem internet para excluir no servidor.');
+        return;
+      }
+      try {
+        await deleteSaleRemote(storeId, v.id);
+        removePendingSale(v.id);
+        await refreshVendasFromCloud(storeId);
+        notify('Recibo excluído');
+      } catch (e) {
+        notify(formatPdvError(e));
+      }
+    } else {
+      setVendas(removeVenda(v.id));
+      notify('Recibo excluído');
+    }
+  };
+
   const finishLogin = (op: Operador, pinCode: string, saveForTablet: boolean) => {
     if (saveForTablet) {
       saveOperadorPin(op.id, pinCode);
@@ -898,19 +988,40 @@ function App() {
           ) : (
             <ul className="max-w-xl mx-auto space-y-2">
               {vendas.map((v) => (
-                <li key={v.id} className="flex items-center justify-between p-3 bg-slate-800 rounded-2xl border border-slate-700">
-                  <div>
-                    <span className="font-mono font-black text-amber-400">#{v.senha}</span>
-                    <span className="text-xs text-slate-400 ml-2">
-                      {v.data} {v.hora}
+                <li key={v.id} className="p-3 bg-slate-800 rounded-2xl border border-slate-700 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="font-mono font-black text-amber-400 text-lg">#{v.senha}</span>
+                      <span className="text-sm text-slate-400 ml-2">
+                        {v.data} {v.hora}
+                      </span>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {v.itens.length} {v.itens.length === 1 ? 'item' : 'itens'} · {v.pagamento}
+                      </p>
+                    </div>
+                    <span className="font-mono text-emerald-400 font-bold text-base shrink-0">
+                      R$ {v.total.toFixed(2)}
                     </span>
                   </div>
-                  <div className="flex gap-2">
-                    <span className="font-mono text-emerald-400 font-bold">R$ {v.total.toFixed(2)}</span>
+                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => imprimirVenda(v, loja, printerConfig)}
-                      className="text-xs bg-indigo-600 px-2 py-1 rounded-lg font-bold"
+                      onClick={() => setVendaEditando(v)}
+                      className="flex-1 min-w-[5rem] py-2 px-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs font-bold"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVendaExcluir(v)}
+                      className="flex-1 min-w-[5rem] py-2 px-2 rounded-xl border border-red-500/40 text-red-400 bg-red-500/10 text-xs font-bold"
+                    >
+                      Excluir
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void imprimirVenda(v, loja, printerConfig).catch((e) => notify(e instanceof Error ? e.message : 'Erro ao imprimir'))}
+                      className="flex-1 min-w-[5rem] py-2 px-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold"
                     >
                       Imprimir
                     </button>
@@ -1320,6 +1431,31 @@ function App() {
           newCarrinhoItemId={newCarrinhoItemId}
         />
       )}
+
+      {vendaEditando && (
+        <EditVendaModal
+          venda={vendaEditando}
+          produtos={produtos}
+          complementos={complementos}
+          newItemId={newCarrinhoItemId}
+          onClose={() => setVendaEditando(null)}
+          onSave={salvarVendaEditada}
+        />
+      )}
+
+      <ConfirmDialog
+        open={Boolean(vendaExcluir)}
+        title="Excluir recibo"
+        message={
+          vendaExcluir
+            ? `Excluir a venda #${vendaExcluir.senha} (${vendaExcluir.data} ${vendaExcluir.hora})? Não dá para desfazer.`
+            : ''
+        }
+        confirmLabel="Excluir"
+        danger
+        onCancel={() => setVendaExcluir(null)}
+        onConfirm={() => void confirmarExcluirVenda()}
+      />
 
       {ultimaVenda && tab === 'vendas' && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-40">

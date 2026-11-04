@@ -195,3 +195,15 @@ export function deleteVenda(id: string): Venda[] {
   saveVendas(list);
   return list;
 }
+
+export function replaceVenda(venda: Venda): Venda[] {
+  const list = loadVendas();
+  const idx = list.findIndex((v) => v.id === venda.id);
+  const next =
+    idx >= 0
+      ? list.map((v) => (v.id === venda.id ? venda : v))
+      : [venda, ...list];
+  next.sort((a, b) => b.timestamp - a.timestamp);
+  saveVendas(next);
+  return next;
+}

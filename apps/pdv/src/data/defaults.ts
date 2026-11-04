@@ -3,6 +3,7 @@ import {
   deleteVenda as deleteVendaShared,
   loadVendas as loadVendasShared,
   persistVenda as persistVendaShared,
+  replaceVenda as replaceVendaShared,
 } from '@gtech/shared';
 
 export {
@@ -28,4 +29,8 @@ export function persistVenda(venda: Venda): Venda[] {
 
 export function removeVenda(id: string): Venda[] {
   return deleteVendaShared(id);
+}
+
+export function replaceVenda(venda: Venda): Venda[] {
+  return replaceVendaShared(venda);
 }

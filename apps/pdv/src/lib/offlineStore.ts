@@ -83,6 +83,15 @@ export function removePendingSale(vendaId: string): void {
   );
 }
 
+export function upsertPendingSale(venda: Venda): void {
+  const list = loadPendingSales().filter((v) => v.id !== venda.id);
+  writeJson(PENDING_SALES_KEY, [venda, ...list]);
+}
+
+export function isVendaPending(vendaId: string): boolean {
+  return loadPendingSales().some((v) => v.id === vendaId);
+}
+
 export function countPendingSales(): number {
   return loadPendingSales().length;
 }

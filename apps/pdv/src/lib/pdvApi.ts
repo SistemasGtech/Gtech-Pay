@@ -220,7 +220,16 @@ export async function verifyOperadorPin(
 
 export async function registerSaleRemote(storeId: string, venda: Venda): Promise<string> {
   if (!supabase) throw new Error('Supabase não configurado');
-  const payload = {
+  const { data, error } = await supabase.rpc('pdv_register_sale', {
+    p_store_id: storeId,
+    p_venda: salePayload(venda),
+  });
+  if (error) throw error;
+  return String(data);
+}
+
+function salePayload(venda: Venda) {
+  return {
     id: venda.id,
     senha: venda.senha,
     comanda: venda.comanda,
@@ -246,12 +255,25 @@ export async function registerSaleRemote(storeId: string, venda: Venda): Promise
       opcoes: i.opcoes,
     })),
   };
-  const { data, error } = await supabase.rpc('pdv_register_sale', {
+}
+
+export async function updateSaleRemote(storeId: string, venda: Venda): Promise<string> {
+  if (!supabase) throw new Error('Supabase não configurado');
+  const { data, error } = await supabase.rpc('pdv_update_sale', {
     p_store_id: storeId,
-    p_venda: payload,
+    p_venda: salePayload(venda),
   });
   if (error) throw error;
   return String(data);
+}
+
+export async function deleteSaleRemote(storeId: string, vendaId: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase não configurado');
+  const { error } = await supabase.rpc('pdv_delete_sale', {
+    p_store_id: storeId,
+    p_venda_id: vendaId,
+  });
+  if (error) throw error;
 }
 
 export async function syncSenhaConfigRemote(storeId: string, config: SenhaConfig): Promise<void> {

@@ -25,6 +25,17 @@ type Props = {
   onChange: (c: PrinterConfig) => void;
 };
 
+const TRANSPORT_OPTIONS: {
+  value: PrinterConfig['transport'];
+  label: string;
+  hint: string;
+}[] = [
+  { value: 'browser', label: 'Navegador / Spooler', hint: 'teste no PC' },
+  { value: 'bluetooth', label: 'Bluetooth ESC/POS', hint: 'pareie no Android antes' },
+  { value: 'usb', label: 'USB OTG ESC/POS', hint: 'cabo OTG no tablet' },
+  { value: 'tcp', label: 'Rede Wi‑Fi / LAN', hint: 'IP porta 9100' },
+];
+
 export function usePrinterState() {
   const [printerConfig, setPrinterConfig] = useState(() => loadPrinterConfig());
 
@@ -211,27 +222,30 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
 
       <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 space-y-3">
         <label className="text-xs font-bold text-slate-400 uppercase">Modo de conexão</label>
-        <select
-          value={config.transport}
-          onChange={(e) =>
-            onChange({ ...config, transport: e.target.value as PrinterConfig['transport'] })
-          }
-          style={{ colorScheme: 'dark', backgroundColor: '#0f172a', color: '#f8fafc' }}
-          className="pdv-select w-full rounded-xl p-3 text-base font-bold border-2"
-        >
-          <option value="browser" style={{ backgroundColor: '#1e293b', color: '#f8fafc' }}>
-            Navegador / Spooler (teste no PC)
-          </option>
-          <option value="bluetooth" style={{ backgroundColor: '#1e293b', color: '#f8fafc' }}>
-            Bluetooth ESC/POS
-          </option>
-          <option value="usb" style={{ backgroundColor: '#1e293b', color: '#f8fafc' }}>
-            USB OTG ESC/POS
-          </option>
-          <option value="tcp" style={{ backgroundColor: '#1e293b', color: '#f8fafc' }}>
-            Rede Wi‑Fi / LAN (IP porta 9100)
-          </option>
-        </select>
+        <div className="space-y-2" role="radiogroup" aria-label="Modo de conexão da impressora">
+          {TRANSPORT_OPTIONS.map((opt) => {
+            const active = config.transport === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => onChange({ ...config, transport: opt.value })}
+                className={`w-full rounded-xl border-2 p-3 text-left transition-colors ${
+                  active
+                    ? 'border-indigo-400 bg-indigo-600/25 text-white ring-2 ring-indigo-400/40'
+                    : 'border-slate-600 bg-slate-900 text-slate-100 hover:border-slate-500'
+                }`}
+              >
+                <span className="block text-base font-black">{opt.label}</span>
+                <span className={`block text-sm font-bold ${active ? 'text-indigo-200' : 'text-slate-400'}`}>
+                  {opt.hint}
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
         {config.transport === 'tcp' && (
           <div className="grid grid-cols-3 gap-2">

@@ -10,6 +10,7 @@ import {
   saveSenhaConfig,
   setProximaSenha,
 } from '@gtech/shared';
+import { ConfirmDialog } from './ConfirmDialog';
 
 type Props = {
   config: SenhaConfig;
@@ -37,7 +38,6 @@ export function useSenhaState() {
   };
 
   const reset = () => {
-    if (!confirm('Zerar contador de senha para o início do dia?')) return;
     setSenhaConfig((prev) => resetSenhaCounter(prev, true));
   };
 
@@ -48,9 +48,22 @@ export function SenhaSettingsPanel({ config, onChange }: Props) {
   const cfg = applyDailyReset(config);
   const display = peekSenhaAtual(cfg);
   const ativo = isControleSenhaAtivo(cfg);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
   return (
     <div className="max-w-lg mx-auto w-full p-4 pb-12 space-y-4">
+      <ConfirmDialog
+        open={confirmResetOpen}
+        title="Resetar senha"
+        message="Resetar senha para o número mínimo agora?"
+        confirmLabel="Resetar"
+        danger
+        onCancel={() => setConfirmResetOpen(false)}
+        onConfirm={() => {
+          onChange(resetSenhaCounter(cfg, true));
+          setConfirmResetOpen(false);
+        }}
+      />
       <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 space-y-3">
         <h2 className="text-base font-black text-white">Controle de senha</h2>
         <button
@@ -139,9 +152,7 @@ export function SenhaSettingsPanel({ config, onChange }: Props) {
 
         <button
           type="button"
-          onClick={() => {
-            if (confirm('Resetar senha para o número mínimo agora?')) onChange(resetSenhaCounter(cfg, true));
-          }}
+          onClick={() => setConfirmResetOpen(true)}
           className="w-full py-3 rounded-2xl border border-red-500/40 text-red-400 font-bold text-sm bg-red-500/10"
         >
           Resetar contador agora
