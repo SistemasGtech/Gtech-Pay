@@ -10,8 +10,9 @@ type Props = {
 };
 
 export function gruposComplementoDoProduto(produto: Produto, complementos: Complemento[]): Complemento[] {
-  const ids = new Set((produto.complementoIds ?? []).map(String));
-  return complementos.filter((c) => ids.has(String(c.id)));
+  const order = (produto.complementoIds ?? []).map(String);
+  const byId = new Map(complementos.map((c) => [String(c.id), c]));
+  return order.map((id) => byId.get(id)).filter((c): c is Complemento => Boolean(c));
 }
 
 export function ComplementoItemModal({ produto, complementos, onClose, onConfirm, newCarrinhoItemId }: Props) {

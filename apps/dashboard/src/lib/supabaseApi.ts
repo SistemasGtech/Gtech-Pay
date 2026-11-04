@@ -75,10 +75,23 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   }));
 
   const linksByProd = new Map<string, string[]>();
+  const linksGrouped = new Map<string, { complemento_id: string; sort_order: number }[]>();
   for (const link of linksRes.data ?? []) {
-    const list = linksByProd.get(link.produto_id) ?? [];
-    list.push(link.complemento_id);
-    linksByProd.set(link.produto_id, list);
+    const pid = String(link.produto_id);
+    const list = linksGrouped.get(pid) ?? [];
+    list.push({
+      complemento_id: String(link.complemento_id),
+      sort_order: Number((link as { sort_order?: number }).sort_order ?? 0),
+    });
+    linksGrouped.set(pid, list);
+  }
+  for (const [prodId, list] of linksGrouped) {
+    linksByProd.set(
+      prodId,
+      list
+        .sort((a, b) => a.sort_order - b.sort_order || a.complemento_id.localeCompare(b.complemento_id))
+        .map((e) => e.complemento_id)
+    );
   }
 
   const produtos: Produto[] = (prodRes.data ?? []).map((p) => ({
@@ -266,7 +279,11 @@ export async function saveProdutosRemote(storeId: string, list: Produto[]): Prom
     await supabase.from('produto_complementos').delete().eq('produto_id', p.id);
     if (p.complementoIds?.length) {
       await supabase.from('produto_complementos').insert(
-        p.complementoIds.map((cid) => ({ produto_id: p.id, complemento_id: cid }))
+        p.complementoIds.map((cid, index) => ({
+          produto_id: p.id,
+          complemento_id: cid,
+          sort_order: index,
+        }))
       );
     }
   }

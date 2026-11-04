@@ -15,6 +15,11 @@ const emptyGrupo = (): Complemento => ({
 
 export function ComplementosPage({ complementos, onSave }: Props) {
   const [form, setForm] = useState<Complemento | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const toggleExpanded = (id: string) => {
+    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,29 +78,56 @@ export function ComplementosPage({ complementos, onSave }: Props) {
         {complementos.length === 0 ? (
           <p className="text-sm text-slate-500 p-6 text-center border border-slate-800 rounded-2xl">Nenhum complemento cadastrado.</p>
         ) : (
-          complementos.map((g) => (
+          [...complementos]
+            .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+            .map((g) => {
+              const open = Boolean(expanded[g.id]);
+              return (
             <div key={g.id} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-              <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950/50">
-                <h3 className="font-black text-lg">{g.nome}</h3>
-                <div className="text-xs font-bold space-x-2">
-                  <button type="button" onClick={() => setForm({ ...g, opcoes: [...g.opcoes] })} className="text-indigo-400">
+              <div className="flex flex-wrap items-center justify-between gap-2 p-4 bg-slate-950/50">
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-black text-lg truncate">{g.nome}</h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {g.opcoes.length} {g.opcoes.length === 1 ? 'opção' : 'opções'}
+                    {!open && g.opcoes.length > 0 && (
+                      <span className="text-slate-600">
+                        {' '}
+                        · {g.opcoes.slice(0, 3).map((o) => o.nome).join(', ')}
+                        {g.opcoes.length > 3 ? '…' : ''}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-bold shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded(g.id)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700"
+                    aria-expanded={open}
+                  >
+                    {open ? 'Recolher' : 'Expandir'}
+                  </button>
+                  <button type="button" onClick={() => setForm({ ...g, opcoes: [...g.opcoes] })} className="text-indigo-400 px-1">
                     Editar
                   </button>
-                  <button type="button" onClick={() => onSave(complementos.filter((x) => x.id !== g.id))} className="text-red-400">
+                  <button type="button" onClick={() => onSave(complementos.filter((x) => x.id !== g.id))} className="text-red-400 px-1">
                     Excluir
                   </button>
                 </div>
               </div>
-              <ul className="divide-y divide-slate-800">
-                {g.opcoes.map((o) => (
-                  <li key={o.id} className="px-4 py-2.5 flex justify-between text-sm">
-                    <span>{o.nome}</span>
-                    <span className="font-mono text-emerald-400">{o.preco > 0 ? `+ R$ ${o.preco.toFixed(2)}` : 'Grátis'}</span>
-                  </li>
-                ))}
-              </ul>
+              {open && (
+                <ul className="divide-y divide-slate-800 border-t border-slate-800">
+                  {g.opcoes.map((o) => (
+                    <li key={o.id} className="px-4 py-2.5 flex justify-between text-sm">
+                      <span>{o.nome}</span>
+                      <span className="font-mono text-emerald-400">{o.preco > 0 ? `+ R$ ${o.preco.toFixed(2)}` : 'Grátis'}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-          ))
+              );
+            })
         )}
       </div>
 

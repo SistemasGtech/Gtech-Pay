@@ -9,6 +9,21 @@ type Props = {
   onSave: (list: Produto[]) => void;
 };
 
+function moveId(ids: string[], id: string, dir: -1 | 1): string[] {
+  const i = ids.indexOf(id);
+  if (i < 0) return ids;
+  const j = i + dir;
+  if (j < 0 || j >= ids.length) return ids;
+  const next = [...ids];
+  [next[i], next[j]] = [next[j], next[i]];
+  return next;
+}
+
+function orderedComplementoNomes(ids: string[], complementos: Complemento[]): string[] {
+  const byId = new Map(complementos.map((c) => [c.id, c.nome]));
+  return ids.map((id) => byId.get(id)).filter(Boolean) as string[];
+}
+
 export function ProdutosPage({ produtos, categorias, complementos, onSave }: Props) {
   const [form, setForm] = useState<Partial<Produto> | null>(null);
 
@@ -43,11 +58,17 @@ export function ProdutosPage({ produtos, categorias, complementos, onSave }: Pro
     setForm(null);
   };
 
-  const toggleComp = (compId: string) => {
+  const selectedIds = form?.complementoIds ?? [];
+  const availableToAdd = complementos.filter((g) => !selectedIds.includes(g.id));
+
+  const addComplemento = (compId: string) => {
+    if (!form || selectedIds.includes(compId)) return;
+    setForm({ ...form, complementoIds: [...selectedIds, compId] });
+  };
+
+  const removeComplemento = (compId: string) => {
     if (!form) return;
-    const ids = form.complementoIds || [];
-    const next = ids.includes(compId) ? ids.filter((i) => i !== compId) : [...ids, compId];
-    setForm({ ...form, complementoIds: next });
+    setForm({ ...form, complementoIds: selectedIds.filter((i) => i !== compId) });
   };
 
   return (
@@ -74,11 +95,11 @@ export function ProdutosPage({ produtos, categorias, complementos, onSave }: Pro
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
-            {produtos.map((p) => {
+            {[...produtos]
+              .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+              .map((p) => {
               const cat = categorias.find((c) => String(c.id) === String(p.categoriaId));
-              const comps = (p.complementoIds || [])
-                .map((id) => complementos.find((c) => c.id === id)?.nome)
-                .filter(Boolean);
+              const comps = orderedComplementoNomes(p.complementoIds || [], complementos);
               return (
                 <tr key={p.id}>
                   <td className="p-3 font-bold">{p.nome}</td>
@@ -89,7 +110,7 @@ export function ProdutosPage({ produtos, categorias, complementos, onSave }: Pro
                     </span>
                   </td>
                   <td className="p-3 font-mono text-emerald-400">R$ {p.preco.toFixed(2)}</td>
-                  <td className="p-3 text-xs text-slate-400">{comps.length ? comps.join(', ') : '—'}</td>
+                  <td className="p-3 text-xs text-slate-400">{comps.length ? comps.join(' → ') : '—'}</td>
                   <td className="p-3 text-right space-x-2 text-xs font-bold">
                     <button type="button" onClick={() => setForm(p)} className="text-indigo-400">
                       Editar
@@ -154,20 +175,85 @@ export function ProdutosPage({ produtos, categorias, complementos, onSave }: Pro
               Ativo no app de vendas
             </label>
 
-            <div className="border border-slate-800 rounded-xl p-3 space-y-2">
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Complementos (grupos)</p>
+            <div className="border border-slate-800 rounded-xl p-3 space-y-3">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Complementos (ordem no PDV)</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Use subir/descer para definir a sequência na venda.</p>
+              </div>
+
               {complementos.length === 0 ? (
                 <p className="text-xs text-slate-500">Cadastre complementos no menu Complementos.</p>
+              ) : selectedIds.length === 0 ? (
+                <p className="text-xs text-slate-500">Nenhum grupo selecionado.</p>
               ) : (
-                complementos.map((g) => (
-                  <label key={g.id} className="flex items-center justify-between gap-2 text-sm cursor-pointer py-1">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <input type="checkbox" checked={(form.complementoIds || []).includes(g.id)} onChange={() => toggleComp(g.id)} />
-                      <span className="font-bold truncate">{g.nome}</span>
-                      <span className="text-[10px] text-slate-500 shrink-0">({g.opcoes.length} opções)</span>
-                    </span>
-                  </label>
-                ))
+                <ul className="space-y-1.5">
+                  {selectedIds.map((compId, index) => {
+                    const g = complementos.find((c) => c.id === compId);
+                    if (!g) return null;
+                    return (
+                      <li
+                        key={compId}
+                        className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-2 py-2 text-sm"
+                      >
+                        <span className="w-6 text-center text-[10px] font-black text-indigo-400">{index + 1}</span>
+                        <span className="flex-1 min-w-0 font-bold truncate">{g.nome}</span>
+                        <span className="text-[10px] text-slate-500 shrink-0">{g.opcoes.length} op.</span>
+                        <div className="flex shrink-0 gap-0.5">
+                          <button
+                            type="button"
+                            title="Subir"
+                            disabled={index === 0}
+                            onClick={() => setForm({ ...form, complementoIds: moveId(selectedIds, compId, -1) })}
+                            className="w-8 h-8 rounded-lg bg-slate-800 text-xs font-black disabled:opacity-30"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            title="Descer"
+                            disabled={index === selectedIds.length - 1}
+                            onClick={() => setForm({ ...form, complementoIds: moveId(selectedIds, compId, 1) })}
+                            className="w-8 h-8 rounded-lg bg-slate-800 text-xs font-black disabled:opacity-30"
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            title="Remover"
+                            onClick={() => removeComplemento(compId)}
+                            className="w-8 h-8 rounded-lg bg-slate-800 text-red-400 text-xs font-black"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {availableToAdd.length > 0 && (
+                <div className="flex flex-wrap gap-2 items-center pt-1 border-t border-slate-800">
+                  <select
+                    id="add-comp-select"
+                    defaultValue=""
+                    className="flex-1 min-w-[140px] bg-slate-950 border border-slate-700 rounded-xl px-2 py-2 text-xs"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v) {
+                        addComplemento(v);
+                        e.target.value = '';
+                      }
+                    }}
+                  >
+                    <option value="">+ Adicionar grupo…</option>
+                    {availableToAdd.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               )}
             </div>
 
