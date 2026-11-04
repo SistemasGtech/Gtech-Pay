@@ -7,7 +7,7 @@ type Props = {
 export function BootSplash({ message = 'Carregando…' }: Props) {
   return (
     <div className="boot-splash min-h-screen min-h-[100dvh] flex flex-col items-center justify-center bg-slate-950 px-6">
-      <GtechPayLogo className="w-24 h-24 mx-auto rounded-2xl object-contain shadow-lg ring-1 ring-cyan-500/25 bg-[#0a1628] boot-splash-logo" />
+      <GtechPayLogo className="w-[clamp(7rem,22vw,11rem)] h-[clamp(7rem,22vw,11rem)] mx-auto rounded-2xl object-contain shadow-lg ring-1 ring-cyan-500/25 bg-[#0a1628] boot-splash-logo" />
       <p className="mt-6 text-sm font-black uppercase tracking-[0.2em] text-indigo-400">Gtech Pay</p>
       <p className="mt-2 text-xs font-bold text-slate-500 text-center max-w-xs">{message}</p>
       <div className="mt-8 h-1 w-36 rounded-full bg-slate-800 overflow-hidden" aria-hidden>

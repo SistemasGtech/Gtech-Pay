@@ -50,6 +50,7 @@ import {
   addPendingSale,
   countPendingSales,
   isOnline,
+  getNetworkConnected,
   loadLatestSnapshot,
   loadSnapshotForBootstrap,
   clearPdvSession,
@@ -60,6 +61,10 @@ import {
   saveSnapshot,
   syncVendasDisplayFromServer,
   verifyOperadorPinLocal,
+  setCloudReachable,
+  subscribeConnectivity,
+  startNetworkMonitoring,
+  getConnectivityState,
 } from './lib/offlineStore';
 import { syncPendingSales } from './lib/syncSales';
 import { imprimirVenda } from './services/printService';
@@ -115,6 +120,7 @@ function App() {
     isPdvCloudEnabled ? countPendingSales() : 0,
   );
   const [syncing, setSyncing] = useState(false);
+  const [connectivity, setConnectivity] = useState(getConnectivityState);
 
   const senhaConfigRef = useRef(senhaConfig);
   senhaConfigRef.current = senhaConfig;
@@ -184,15 +190,16 @@ function App() {
       const server = await fetchPdvVendas(sid);
       serverVendasRef.current = server;
       setVendas(syncVendasDisplayFromServer(server));
+      setCloudReachable(true);
     } catch {
-      /* lista local permanece se a rede falhar */
+      setCloudReachable(false);
     }
   }, []);
 
   const runSync = useCallback(async (silent = false, sid?: string) => {
     const effectiveStoreId = sid ?? storeIdRef.current;
     if (!isPdvCloudEnabled || !effectiveStoreId || syncingRef.current) return;
-    if (!isOnline()) {
+    if (!getNetworkConnected()) {
       if (!silent) notify('Sem internet para sincronizar');
       return;
     }
@@ -212,7 +219,9 @@ function App() {
         );
       } else if (result.failed > 0 && !silent) {
         notify(result.lastError ?? 'Falha ao sincronizar');
+        setCloudReachable(false);
       }
+      if (result.synced > 0) setCloudReachable(true);
       await refreshVendasFromCloud(effectiveStoreId);
     } finally {
       syncingRef.current = false;
@@ -255,11 +264,14 @@ function App() {
         const data = await fetchPdvBootstrap(normalized);
         saveSnapshot(normalized, data);
         applyBootstrap(data, normalized);
+        setCloudReachable(true);
         void runSync(true, normalized);
       } catch (e) {
         if (loadFromCache(normalized)) {
+          setCloudReachable(false);
           if (!background) notify('Modo offline — usando dados salvos no tablet');
         } else {
+          setCloudReachable(false);
           setBootError(formatPdvError(e));
         }
       } finally {
@@ -301,9 +313,10 @@ function App() {
       }
       saveConfiguredStoreId(sid);
 
-      if (isOnline()) {
+      if (getNetworkConnected()) {
         await loadCloudRef.current(sid);
       } else if (loadFromCache(sid)) {
+        setCloudReachable(false);
         notify('Modo offline — vendas serão sincronizadas quando a internet voltar.');
       } else {
         setBootError('Sem internet e sem dados locais. Abra o app uma vez com Wi‑Fi/4G para baixar a loja.');
@@ -317,6 +330,7 @@ function App() {
           setUsuario(operadorFromAuthUser(session.user));
           setNeedsAuthLogin(false);
           setBootError('');
+          setCloudReachable(false);
           notify('Modo offline — usando dados salvos no tablet');
           return;
         }
@@ -332,6 +346,11 @@ function App() {
   const startCloudSessionRef = useRef(startCloudSession);
   startCloudSessionRef.current = startCloudSession;
   const bootstrappedRef = useRef(false);
+
+  useEffect(() => {
+    void startNetworkMonitoring();
+    return subscribeConnectivity(() => setConnectivity(getConnectivityState()));
+  }, []);
 
   useEffect(() => {
     if (!isPdvCloudEnabled || bootstrappedRef.current) return;
@@ -359,7 +378,7 @@ function App() {
     if (!isPdvCloudEnabled) return;
     const syncWhenPossible = () => {
       const sid = storeIdRef.current ?? getConfiguredStoreId();
-      if (!sid || !isOnline()) return;
+      if (!sid || !getNetworkConnected()) return;
       void loadCloudRef.current(sid, { background: true }).then(() => runSyncRef.current(true, sid));
     };
     window.addEventListener('online', syncWhenPossible);
@@ -481,7 +500,7 @@ function App() {
       addPendingSale(venda);
       setVendas(syncVendasDisplayFromServer(serverVendasRef.current));
       setPendingCount(countPendingSales());
-      if (isOnline()) {
+      if (getNetworkConnected()) {
         const result = await syncPendingSales(
           storeId,
           advanceSenhaAfterSale(applyDailyReset(senhaConfig)),
@@ -765,7 +784,7 @@ function App() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-slate-950">
+    <div className="pdv-app-shell flex flex-col bg-slate-950 h-full min-h-0">
       {toast && (
         <div className="fixed top-[max(0.75rem,env(safe-area-inset-top,0px))] left-1/2 -translate-x-1/2 z-50 bg-slate-800 border border-slate-600 px-4 py-2 rounded-xl text-xs font-bold">
           {toast}
@@ -821,19 +840,27 @@ function App() {
 
       {isPdvCloudEnabled && storeId && (
         <div className="shrink-0 px-2 py-1.5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900/80 text-[10px]">
-          <span className={`font-bold ${isOnline() ? 'text-emerald-400' : 'text-amber-400'}`}>
-            {isOnline()
+          <span
+            className={`font-bold leading-snug ${
+              connectivity.network && connectivity.cloud ? 'text-emerald-400' : 'text-amber-400'
+            }`}
+          >
+            {!connectivity.network
               ? pendingCount > 0
-                ? `Online — ${pendingCount} venda(s) aguardando envio`
-                : 'Online'
-              : pendingCount > 0
-                ? `Offline — ${pendingCount} venda(s) no tablet (envia ao conectar)`
-                : 'Offline — vendas salvas no tablet'}
+                ? `Sem internet — ${pendingCount} venda(s) guardada(s) no tablet`
+                : 'Sem internet — vendas ficam no tablet até reconectar'
+              : !connectivity.cloud
+                ? pendingCount > 0
+                  ? `Offline / rede instável — ${pendingCount} venda(s) aguardando envio`
+                  : 'Offline — usando catálogo salvo no tablet'
+                : pendingCount > 0
+                  ? `Online — ${pendingCount} venda(s) para enviar ao dashboard`
+                  : 'Online — sincronizado com o dashboard'}
           </span>
           {pendingCount > 0 && (
             <button
               type="button"
-              disabled={syncing || !isOnline()}
+              disabled={syncing || !connectivity.network || !isOnline()}
               onClick={() => void runSync()}
               className="px-2.5 py-1 rounded-lg bg-indigo-600 disabled:bg-slate-700 font-bold"
             >
@@ -1134,7 +1161,7 @@ function App() {
               ))}
             </div>
 
-            <div className="p-3 border-t border-slate-800 space-y-2 shrink-0">
+            <div className="p-3 border-t border-slate-800 space-y-2 shrink-0 pdv-bottom-actions">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold text-slate-400">
                   {carrinho.length} {carrinho.length === 1 ? 'item' : 'itens'}
@@ -1155,8 +1182,8 @@ function App() {
       )}
 
       {tab === 'vendas' && etapaVenda === 'pagamento' && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-slate-950">
-          <div className="flex-1 overflow-y-auto custom-scroll p-4 max-w-lg mx-auto w-full space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scroll bg-slate-950">
+          <div className="p-4 max-w-lg mx-auto w-full space-y-4 pb-6">
             <button
               type="button"
               onClick={() => setEtapaVenda('pedido')}
@@ -1267,9 +1294,7 @@ function App() {
                 )}
               </div>
             )}
-          </div>
 
-          <div className="shrink-0 p-4 border-t border-slate-800 bg-slate-900 max-w-lg mx-auto w-full">
             <button
               type="button"
               disabled={
@@ -1277,7 +1302,7 @@ function App() {
                 (pagamento === 'Dinheiro' && (parseFloat(valorRecebido) || 0) < total)
               }
               onClick={() => void finalizar()}
-              className="w-full py-4 rounded-2xl bg-emerald-600 disabled:bg-slate-700 font-black text-sm uppercase"
+              className="w-full py-4 rounded-2xl bg-emerald-600 disabled:bg-slate-700 font-black text-sm uppercase mt-2"
             >
               {controleSenhaAtivo ? `Confirmar venda #${senhaAtual}` : 'Confirmar venda'}
             </button>

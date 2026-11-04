@@ -4,7 +4,7 @@
   "webDir": "dist",
   "android": {
     "allowMixedContent": true,
-    "includePlugins": ["@devlas/capacitor-thermal-printer", "@capacitor/splash-screen"]
+    "includePlugins": ["@devlas/capacitor-thermal-printer", "@capacitor/splash-screen", "@capacitor/network"]
   },
   "plugins": {
     "SplashScreen": {

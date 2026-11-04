@@ -1,6 +1,7 @@
 import type { Venda } from '@gtech/shared';
 import { saveVendas } from '@gtech/shared';
 import type { PdvBootstrap } from './pdvApi';
+export { isOnline, setCloudReachable, subscribeConnectivity, startNetworkMonitoring, getConnectivityState, getNetworkConnected } from './networkStatus';
 
 export const SNAPSHOT_KEY = 'gtech_pdv_snapshot';
 export const PENDING_SALES_KEY = 'gtech_pdv_pending_sales';
@@ -31,10 +32,6 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson(key: string, value: unknown): void {
   localStorage.setItem(key, JSON.stringify(value));
-}
-
-export function isOnline(): boolean {
-  return typeof navigator === 'undefined' ? true : navigator.onLine;
 }
 
 export function saveSnapshot(storeId: string, bootstrap: PdvBootstrap): void {

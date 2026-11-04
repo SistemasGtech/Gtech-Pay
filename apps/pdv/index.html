@@ -26,9 +26,11 @@
         z-index: 9999;
       }
       #boot-fallback img {
-        width: 5.5rem;
-        height: 5.5rem;
-        border-radius: 1rem;
+        width: clamp(7rem, 22vw, 11rem);
+        height: clamp(7rem, 22vw, 11rem);
+        border-radius: 1.25rem;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
       }
     </style>
     <link rel="icon" type="image/png" href="/gtech-pay-icon-square.png" />
@@ -37,7 +39,7 @@
   </head>
   <body class="h-screen overflow-hidden">
     <div id="boot-fallback" aria-live="polite">
-      <img src="/gtech-pay-icon-square.png" alt="" width="88" height="88" />
+      <img src="/gtech-pay-icon-square.png" alt="" width="512" height="512" decoding="async" />
       <p style="margin: 1.25rem 0 0; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; color: #818cf8;">Gtech Pay</p>
     </div>
     <div id="root" class="h-full"></div>

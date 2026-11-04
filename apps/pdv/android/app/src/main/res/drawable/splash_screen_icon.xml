@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icone de abertura Android 12+: bitmap nodpi (512px) sem filtro de escala -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="216dp"
+        android:height="216dp"
+        android:gravity="center">
+        <bitmap
+            android:gravity="fill"
+            android:src="@drawable/splash_logo"
+            android:filter="false" />
+    </item>
+</layer-list>
