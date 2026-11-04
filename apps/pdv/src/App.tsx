@@ -103,7 +103,6 @@ function App() {
   const { printerConfig, setPrinterConfig } = usePrinterState();
 
   const [categoriaId, setCategoriaId] = useState('todas');
-  const [busca, setBusca] = useState('');
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [pedidoAberto, setPedidoAberto] = useState(false);
   const [pagamento, setPagamento] = useState<FormaPagamento>('PIX');
@@ -128,10 +127,9 @@ function App() {
     return produtos.filter((p) => {
       if (!p.ativo) return false;
       if (categoriaId !== 'todas' && String(p.categoriaId) !== categoriaId) return false;
-      if (busca && !p.nome.toLowerCase().includes(busca.toLowerCase())) return false;
       return true;
     });
-  }, [produtos, categoriaId, busca]);
+  }, [produtos, categoriaId]);
 
   const total = useMemo(() => carrinho.reduce((s, i) => s + i.subtotal, 0), [carrinho]);
 
@@ -1013,38 +1011,34 @@ function App() {
           </div>
 
           <section className="flex-1 flex flex-col min-h-0 lg:border-r border-slate-800">
-            <div className="p-2 flex gap-2 overflow-x-auto shrink-0 border-b border-slate-800">
-              <button
-                type="button"
-                onClick={() => setCategoriaId('todas')}
-                className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap ${
-                  categoriaId === 'todas' ? 'bg-indigo-600' : 'bg-slate-800'
-                }`}
-              >
-                Todos
-              </button>
-              {categorias.map((c) => {
-                const active = categoriaId === String(c.id);
-                return (
+            <div className="p-2 shrink-0 border-b border-slate-800">
+              <div className="flex flex-wrap gap-1.5 items-center">
                 <button
-                  key={c.id}
                   type="button"
-                  onClick={() => setCategoriaId(String(c.id))}
-                  style={categoriaChipStyle(c.cor, active)}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap border-2 shrink-0 ${
-                    active ? 'text-white shadow-sm' : 'text-slate-200'
+                  onClick={() => setCategoriaId('todas')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold leading-tight ${
+                    categoriaId === 'todas' ? 'bg-indigo-600' : 'bg-slate-800'
                   }`}
                 >
-                  {c.nome}
+                  Todos
                 </button>
-                );
-              })}
-              <input
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Buscar..."
-                className="ml-auto bg-slate-900 border border-slate-700 rounded-xl px-2 py-1 text-xs min-w-[120px]"
-              />
+                {categorias.map((c) => {
+                  const active = categoriaId === String(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setCategoriaId(String(c.id))}
+                      style={categoriaChipStyle(c.cor, active)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold leading-tight border-2 max-w-full ${
+                        active ? 'text-white shadow-sm' : 'text-slate-200'
+                      }`}
+                    >
+                      {c.nome}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scroll min-h-0">
               {produtosFiltrados.map((p) => {

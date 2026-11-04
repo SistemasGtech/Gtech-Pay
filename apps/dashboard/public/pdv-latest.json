@@ -1,6 +1,6 @@
 {
-  "versionCode": 15,
-  "versionName": "1.0.15",
-  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.15/app-debug.apk",
-  "notes": "PDV offline com sync automático. Splash profissional. Editar itens do carrinho. Cores das categorias. Recibos alinhados ao dashboard."
+  "versionCode": 16,
+  "versionName": "1.0.16",
+  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.16/app-debug.apk",
+  "notes": "PDV offline com sync automático. Editar carrinho, splash, cores das categorias. Categorias em várias linhas (sem rolagem)."
 }
