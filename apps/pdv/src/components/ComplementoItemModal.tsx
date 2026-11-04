@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Complemento, ItemCarrinho, Produto } from '@gtech/shared';
+import { complementoGrupoTheme } from '../lib/categoriaUi';
 
 type Props = {
   produto: Produto;
@@ -115,11 +116,20 @@ export function ComplementoItemModal({
         )}
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scroll">
-          {grupos.map((grupo) => (
-            <div key={grupo.id} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-2">
-              <p className="text-xs font-black uppercase text-slate-400 border-b border-slate-800 pb-2">
+          {grupos.map((grupo, grupoIndex) => {
+            const theme = complementoGrupoTheme(grupoIndex);
+            return (
+            <div
+              key={grupo.id}
+              className={`p-3 rounded-2xl border border-l-4 space-y-2 ${theme.panel}`}
+            >
+              <p
+                className={`text-sm font-black uppercase border-b pb-2 ${theme.title} ${theme.headerBorder}`}
+              >
                 {grupo.nome}
-                <span className="normal-case font-bold text-slate-600 ml-1">· opcional · várias</span>
+                <span className={`normal-case font-bold ml-1 opacity-70 ${theme.title}`}>
+                  · opcional · várias
+                </span>
               </p>
               <div className="space-y-1.5">
                 {grupo.opcoes.map((opc) => {
@@ -129,10 +139,10 @@ export function ComplementoItemModal({
                       key={opc.id}
                       type="button"
                       onClick={() => selecionarOpcao(String(grupo.id), String(opc.id))}
-                      className={`w-full flex items-center justify-between p-3 rounded-xl border text-xs font-bold transition-colors ${
+                      className={`w-full flex items-center justify-between p-3 rounded-xl border text-sm font-bold transition-colors ${
                         sel
                           ? 'border-indigo-500 bg-indigo-600 text-white'
-                          : 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800'
+                          : 'border-slate-800 bg-slate-900/80 text-slate-200 hover:bg-slate-800'
                       }`}
                     >
                       <span>{opc.nome}</span>
@@ -144,7 +154,8 @@ export function ComplementoItemModal({
                 })}
               </div>
             </div>
-          ))}
+            );
+          })}
 
           <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
             <label className="text-xs font-black uppercase text-slate-400">Observação</label>

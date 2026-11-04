@@ -361,7 +361,7 @@ function App() {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     if (!authChecking) {
-      void SplashScreen.hide({ fadeOutDuration: 320 });
+      void SplashScreen.hide({ fadeOutDuration: 150 });
     }
   }, [authChecking]);
 

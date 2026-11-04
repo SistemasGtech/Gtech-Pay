@@ -216,12 +216,21 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
           onChange={(e) =>
             onChange({ ...config, transport: e.target.value as PrinterConfig['transport'] })
           }
-          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-sm font-bold"
+          style={{ colorScheme: 'dark', backgroundColor: '#0f172a', color: '#f8fafc' }}
+          className="pdv-select w-full rounded-xl p-3 text-base font-bold border-2"
         >
-          <option value="browser">Navegador / Spooler (teste no PC)</option>
-          <option value="bluetooth">Bluetooth ESC/POS</option>
-          <option value="usb">USB OTG ESC/POS</option>
-          <option value="tcp">Rede Wi‑Fi / LAN (IP porta 9100)</option>
+          <option value="browser" style={{ backgroundColor: '#1e293b', color: '#f8fafc' }}>
+            Navegador / Spooler (teste no PC)
+          </option>
+          <option value="bluetooth" style={{ backgroundColor: '#1e293b', color: '#f8fafc' }}>
+            Bluetooth ESC/POS
+          </option>
+          <option value="usb" style={{ backgroundColor: '#1e293b', color: '#f8fafc' }}>
+            USB OTG ESC/POS
+          </option>
+          <option value="tcp" style={{ backgroundColor: '#1e293b', color: '#f8fafc' }}>
+            Rede Wi‑Fi / LAN (IP porta 9100)
+          </option>
         </select>
 
         {config.transport === 'tcp' && (
@@ -242,14 +251,35 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
         )}
 
         <label className="text-xs font-bold text-slate-400 uppercase">Bobina</label>
-        <select
-          value={config.larguraPapel}
-          onChange={(e) => onChange({ ...config, larguraPapel: e.target.value as '58mm' | '80mm' })}
-          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-sm font-bold"
-        >
-          <option value="80mm">80 mm (padrão balcão)</option>
-          <option value="58mm">58 mm (portátil)</option>
-        </select>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Largura da bobina">
+          {(
+            [
+              { value: '80mm' as const, label: '80 mm', hint: 'padrão balcão' },
+              { value: '58mm' as const, label: '58 mm', hint: 'portátil' },
+            ] as const
+          ).map((opt) => {
+            const active = config.larguraPapel === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => onChange({ ...config, larguraPapel: opt.value })}
+                className={`rounded-xl border-2 p-3 text-left transition-colors ${
+                  active
+                    ? 'border-indigo-400 bg-indigo-600/25 text-white ring-2 ring-indigo-400/40'
+                    : 'border-slate-600 bg-slate-900 text-slate-200 hover:border-slate-500'
+                }`}
+              >
+                <span className="block text-base font-black">{opt.label}</span>
+                <span className={`block text-sm font-bold ${active ? 'text-indigo-200' : 'text-slate-400'}`}>
+                  {opt.hint}
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
         <label className="flex items-center gap-3 p-3 bg-slate-900 rounded-xl border border-slate-700">
           <input

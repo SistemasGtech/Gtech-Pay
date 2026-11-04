@@ -116,3 +116,18 @@ body {
 #boot-fallback.boot-fallback-hidden {
   display: none !important;
 }
+
+/* Select nativo no WebView Android: campo e lista legíveis no tema escuro */
+.pdv-select {
+  color-scheme: dark;
+  -webkit-text-fill-color: #f8fafc;
+  color: #f8fafc !important;
+  background-color: #0f172a !important;
+  border-color: #64748b !important;
+}
+
+.pdv-select option,
+.pdv-select optgroup {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+}
