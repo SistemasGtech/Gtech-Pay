@@ -95,6 +95,7 @@ function App() {
   const [categoriaId, setCategoriaId] = useState('todas');
   const [busca, setBusca] = useState('');
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
+  const [pedidoAberto, setPedidoAberto] = useState(false);
   const [cliente, setCliente] = useState('');
   const [pagamento, setPagamento] = useState<FormaPagamento>('PIX');
   const [valorRecebido, setValorRecebido] = useState('');
@@ -342,6 +343,18 @@ function App() {
     }
     setItemModal(prod);
   };
+
+  const irParaPagamento = useCallback(() => {
+    setPagamento('PIX');
+    setValorRecebido('');
+    setPedidoAberto(false);
+    setEtapaVenda('pagamento');
+  }, []);
+
+  const qtdItensCarrinho = useMemo(
+    () => carrinho.reduce((s, i) => s + (i.quantidade || 1), 0),
+    [carrinho],
+  );
 
   const avancarSenhaPosVenda = useCallback(() => {
     setSenhaConfig((prev) => {
@@ -794,8 +807,115 @@ function App() {
       )}
 
       {tab === 'vendas' && etapaVenda === 'pedido' && (
-        <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
-          <section className="flex-1 flex flex-col min-h-0 border-r border-slate-800">
+        <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
+          {/* Retrato: barra do pedido no topo (fácil de ver) */}
+          <div className="lg:hidden shrink-0 flex flex-col bg-slate-950 border-b border-slate-700 shadow-md z-20">
+            <div className="flex items-stretch min-h-[60px] bg-slate-950">
+              <button
+                type="button"
+                onClick={() => setPedidoAberto((v) => !v)}
+                className="flex-1 flex items-center gap-2 px-3 py-2 text-left border-r border-slate-700 min-w-0"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-black">Pedido</span>
+                    <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1 rounded bg-slate-800 border border-slate-600 text-[11px] font-mono font-black">
+                      {qtdItensCarrinho}
+                    </span>
+                    <span className="text-slate-500 text-xs" aria-hidden>
+                      {pedidoAberto ? '▴' : '▾'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                    Total: <span className="font-mono font-bold text-white">R$ {total.toFixed(2)}</span>
+                  </p>
+                </div>
+              </button>
+              <button
+                type="button"
+                disabled={!carrinho.length}
+                onClick={irParaPagamento}
+                className="shrink-0 w-[30%] max-w-[140px] min-w-[96px] bg-emerald-500 disabled:bg-slate-700 text-slate-950 disabled:text-slate-500 font-black text-sm uppercase tracking-wide"
+              >
+                Cobrar
+              </button>
+            </div>
+            <div
+              className={`bg-slate-900 border-t border-slate-800 transition-[max-height] duration-200 ease-out overflow-hidden ${
+                pedidoAberto ? 'max-h-[min(40vh,360px)]' : 'max-h-0'
+              }`}
+            >
+              <div className="max-h-[min(40vh,360px)] overflow-y-auto custom-scroll">
+                {controleSenhaAtivo && (
+                  <div className="p-3 flex items-center justify-between border-b border-slate-800 bg-slate-950">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold">Senha</span>
+                    <div className="flex items-center gap-2 bg-amber-400 text-slate-950 px-3 py-1 rounded-2xl">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          pushSenhaConfig(
+                            setProximaSenha(applyDailyReset(senhaConfig), applyDailyReset(senhaConfig).proximaSenha - 1),
+                          )
+                        }
+                        className="font-black px-1"
+                      >
+                        −
+                      </button>
+                      <span className="font-mono font-black text-xl">#{senhaAtual}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          pushSenhaConfig(
+                            setProximaSenha(applyDailyReset(senhaConfig), applyDailyReset(senhaConfig).proximaSenha + 1),
+                          )
+                        }
+                        className="font-black px-1"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <input
+                  value={cliente}
+                  onChange={(e) => setCliente(e.target.value)}
+                  placeholder="Cliente (opcional)"
+                  className="w-full bg-slate-950 border-b border-slate-800 px-3 py-2.5 text-xs"
+                />
+                {carrinho.length === 0 ? (
+                  <p className="p-4 text-center text-xs text-slate-500">Nenhum item no pedido</p>
+                ) : (
+                  <ul className="divide-y divide-slate-800">
+                    {carrinho.map((item) => (
+                      <li key={item.carrinhoItemId} className="px-3 py-2.5 flex items-start justify-between gap-2 text-xs">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold uppercase truncate">
+                            {item.quantidade > 1 ? `${item.quantidade}x ` : ''}
+                            {item.nome}
+                          </p>
+                          {item.opcoes.length > 0 && (
+                            <p className="text-[10px] text-slate-500 mt-0.5">{item.opcoes.map((o) => o.nome).join(' · ')}</p>
+                          )}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <span className="font-mono font-bold text-emerald-400">R$ {item.subtotal.toFixed(2)}</span>
+                          <button
+                            type="button"
+                            className="block ml-auto mt-1 text-red-400 font-bold"
+                            onClick={() => setCarrinho((c) => c.filter((i) => i.carrinhoItemId !== item.carrinhoItemId))}
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <section className="flex-1 flex flex-col min-h-0 lg:border-r border-slate-800">
             <div className="p-2 flex gap-2 overflow-x-auto shrink-0 border-b border-slate-800">
               <button
                 type="button"
@@ -825,7 +945,7 @@ function App() {
                 className="ml-auto bg-slate-900 border border-slate-700 rounded-xl px-2 py-1 text-xs min-w-[120px]"
               />
             </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scroll">
+            <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scroll min-h-0">
               {produtosFiltrados.map((p) => (
                 <button
                   key={p.id}
@@ -840,41 +960,61 @@ function App() {
             </div>
           </section>
 
-          <aside className="w-full md:w-[380px] flex flex-col bg-slate-900 shrink-0 min-h-[40vh] md:min-h-0">
+          {/* Paisagem / tablet largo: carrinho lateral */}
+          <aside className="hidden lg:flex w-[380px] flex-col bg-slate-900 shrink-0 min-h-0 border-l border-slate-800">
             {controleSenhaAtivo && (
-            <div className="p-3 flex items-center justify-between border-b border-slate-800 bg-slate-950">
-              <div>
-                <span className="text-[10px] text-slate-400 uppercase font-bold">Senha deste pedido</span>
-                <p className="text-[11px] text-slate-500">Ajuste antes de confirmar</p>
+              <div className="p-3 flex items-center justify-between border-b border-slate-800 bg-slate-950 shrink-0">
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold">Senha deste pedido</span>
+                  <p className="text-[11px] text-slate-500">Ajuste antes de confirmar</p>
+                </div>
+                <div className="flex items-center gap-2 bg-amber-400 text-slate-950 px-3 py-1 rounded-2xl">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      pushSenhaConfig(
+                        setProximaSenha(applyDailyReset(senhaConfig), applyDailyReset(senhaConfig).proximaSenha - 1),
+                      )
+                    }
+                    className="font-black px-1"
+                  >
+                    −
+                  </button>
+                  <span className="font-mono font-black text-2xl">#{senhaAtual}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      pushSenhaConfig(
+                        setProximaSenha(applyDailyReset(senhaConfig), applyDailyReset(senhaConfig).proximaSenha + 1),
+                      )
+                    }
+                    className="font-black px-1"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2 bg-amber-400 text-slate-950 px-3 py-1 rounded-2xl">
-                <button type="button" onClick={() => pushSenhaConfig(setProximaSenha(applyDailyReset(senhaConfig), applyDailyReset(senhaConfig).proximaSenha - 1))} className="font-black px-1">
-                  −
-                </button>
-                <span className="font-mono font-black text-2xl">#{senhaAtual}</span>
-                <button type="button" onClick={() => pushSenhaConfig(setProximaSenha(applyDailyReset(senhaConfig), applyDailyReset(senhaConfig).proximaSenha + 1))} className="font-black px-1">
-                  +
-                </button>
-              </div>
-            </div>
             )}
 
             <input
               value={cliente}
               onChange={(e) => setCliente(e.target.value)}
               placeholder="Cliente (opcional)"
-              className="m-2 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs"
+              className="m-2 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs shrink-0"
             />
 
-            <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scroll">
+            <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scroll min-h-0">
               {carrinho.map((item) => (
                 <div key={item.carrinhoItemId} className="p-2 bg-slate-800 rounded-xl border border-slate-700 text-xs">
-                  <div className="flex justify-between font-bold">
+                  <div className="flex justify-between font-bold gap-2">
                     <span>
                       {item.quantidade > 1 ? `${item.quantidade}x ` : ''}
                       {item.nome}
                     </span>
-                    <button type="button" onClick={() => setCarrinho((c) => c.filter((i) => i.carrinhoItemId !== item.carrinhoItemId))}>
+                    <button
+                      type="button"
+                      onClick={() => setCarrinho((c) => c.filter((i) => i.carrinhoItemId !== item.carrinhoItemId))}
+                    >
                       ✕
                     </button>
                   </div>
@@ -897,11 +1037,7 @@ function App() {
               <button
                 type="button"
                 disabled={!carrinho.length}
-                onClick={() => {
-                  setPagamento('PIX');
-                  setValorRecebido('');
-                  setEtapaVenda('pagamento');
-                }}
+                onClick={irParaPagamento}
                 className="w-full py-3 rounded-2xl bg-indigo-600 disabled:bg-slate-700 font-black text-xs uppercase"
               >
                 Finalizar pedido

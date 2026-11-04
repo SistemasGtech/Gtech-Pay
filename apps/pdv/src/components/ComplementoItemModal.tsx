@@ -27,11 +27,7 @@ export function ComplementoItemModal({ produto, complementos, onClose, onConfirm
   const [erro, setErro] = useState('');
 
   useEffect(() => {
-    const initial: string[] = [];
-    grupos.forEach((g) => {
-      if (g.opcoes.length > 0) initial.push(String(g.opcoes[0].id));
-    });
-    setOpcoesIds(initial);
+    setOpcoesIds([]);
     setQtd(1);
     setObservacao('');
     setErro('');
@@ -48,19 +44,17 @@ export function ComplementoItemModal({ produto, complementos, onClose, onConfirm
     return Number(produto.preco) + extra;
   }, [produto.preco, opcoesIds, grupos]);
 
-  const selecionarOpcao = (grupoId: string, opcaoId: string) => {
+  const selecionarOpcao = (_grupoId: string, opcaoId: string) => {
     setErro('');
-    const grupo = grupos.find((g) => String(g.id) === String(grupoId));
-    if (!grupo) return;
-    const idsDoGrupo = grupo.opcoes.map((o) => String(o.id));
-    setOpcoesIds((prev) => [...prev.filter((id) => !idsDoGrupo.includes(String(id))), String(opcaoId)]);
+    const id = String(opcaoId);
+    setOpcoesIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   const confirmar = () => {
     for (const g of grupos) {
       const tem = g.opcoes.some((o) => opcoesIds.includes(String(o.id)));
       if (!tem) {
-        setErro(`Selecione uma opção em "${g.nome}".`);
+        setErro(`Selecione ao menos uma opção em "${g.nome}".`);
         return;
       }
     }
@@ -114,6 +108,7 @@ export function ComplementoItemModal({ produto, complementos, onClose, onConfirm
             <div key={grupo.id} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-2">
               <p className="text-[10px] font-black uppercase text-slate-400 border-b border-slate-800 pb-2">
                 {grupo.nome}
+                <span className="normal-case font-bold text-slate-600 ml-1">· várias opções</span>
               </p>
               <div className="space-y-1.5">
                 {grupo.opcoes.map((opc) => {

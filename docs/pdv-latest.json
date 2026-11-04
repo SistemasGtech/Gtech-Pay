@@ -1,6 +1,6 @@
 {
-  "versionCode": 12,
-  "versionName": "1.0.11",
-  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.12/app-debug.apk",
-  "notes": "Login e-mail/senha, logo Gtech Pay, segurança Supabase. Release pdv-1.0.12 com APK gerado após versionCode 12."
+  "versionCode": 13,
+  "versionName": "1.0.13",
+  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.13/app-debug.apk",
+  "notes": "PDV retrato: pedido no topo e Cobrar. Complementos: múltipla escolha e sem pré-seleção."
 }
