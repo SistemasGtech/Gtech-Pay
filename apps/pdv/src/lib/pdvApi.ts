@@ -137,6 +137,13 @@ function mapVendas(raw: unknown): Venda[] {
   });
 }
 
+export async function fetchPdvVendas(storeId: string, limit = 100): Promise<Venda[]> {
+  if (!supabase) throw new Error('Supabase não configurado no PDV');
+  const { data, error } = await supabase.rpc('pdv_list_sales', { p_store_id: storeId, p_limit: limit });
+  if (error) throw error;
+  return mapVendas(data);
+}
+
 export async function fetchPdvBootstrap(storeId: string): Promise<PdvBootstrap> {
   if (!supabase) throw new Error('Supabase não configurado no PDV');
 

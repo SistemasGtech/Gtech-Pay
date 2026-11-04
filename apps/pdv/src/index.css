@@ -53,3 +53,37 @@ body {
   background: #334155;
   border-radius: 999px;
 }
+
+@keyframes boot-splash-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.92;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes boot-splash-bar {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.boot-splash-logo {
+  animation: boot-splash-pulse 2.4s ease-in-out infinite;
+}
+
+.boot-splash-bar {
+  width: 40%;
+  animation: boot-splash-bar 1.25s ease-in-out infinite;
+}
+
+#boot-fallback.boot-fallback-hidden {
+  display: none !important;
+}

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { SplashScreen } from '@capacitor/splash-screen';
 import type {
   Categoria,
   Complemento,
@@ -25,15 +27,17 @@ import { PrinterSettingsPanel, usePrinterState } from './components/PrinterPanel
 import { UpdateSettingsPanel } from './components/UpdatePanel';
 import { SenhaSettingsPanel, useSenhaState } from './components/SenhaPanel';
 import { ComplementoItemModal, gruposComplementoDoProduto } from './components/ComplementoItemModal';
+import { BootSplash } from './components/BootSplash';
 import { PdvLoginPanel } from './components/PdvLoginPanel';
 import {
-  getCurrentStoreIdFromAuth,
   getPdvAuthSession,
   operadorFromAuthUser,
+  resolveStoreIdForSession,
   signOutPdv,
 } from './lib/pdvAuth';
 import {
   fetchPdvBootstrap,
+  fetchPdvVendas,
   formatPdvError,
   getConfiguredStoreId,
   isPdvCloudEnabled,
@@ -46,21 +50,28 @@ import {
   addPendingSale,
   countPendingSales,
   isOnline,
+  loadLatestSnapshot,
+  loadSnapshotForBootstrap,
   clearPdvSession,
   loadOperadorPinCache,
   loadPdvSession,
-  loadSnapshot,
-  mergeVendasForDisplay,
   saveOperadorPin,
   savePdvSession,
   saveSnapshot,
+  syncVendasDisplayFromServer,
   verifyOperadorPinLocal,
 } from './lib/offlineStore';
 import { syncPendingSales } from './lib/syncSales';
 import { imprimirVenda } from './services/printService';
+import { categoriaChipStyle, normalizeCategoriaCor, produtoCategoriaStyle } from './lib/categoriaUi';
 
 type Tab = 'vendas' | 'recibos' | 'senha' | 'impressora' | 'atualizar';
 type EtapaVenda = 'pedido' | 'pagamento';
+
+type ItemModalState = {
+  produto: Produto;
+  editItem?: ItemCarrinho;
+};
 
 function App() {
   const [storeId, setStoreId] = useState<string | null>(() =>
@@ -70,7 +81,6 @@ function App() {
   const [authChecking, setAuthChecking] = useState(isPdvCloudEnabled);
   const [bootLoading, setBootLoading] = useState(false);
   const [bootError, setBootError] = useState('');
-  const [cloudReady, setCloudReady] = useState(false);
 
   const [usuario, setUsuario] = useState<Operador | null>(null);
   const [operadores, setOperadores] = useState<Operador[]>(OPERADORES_PADRAO);
@@ -80,7 +90,7 @@ function App() {
     isPdvCloudEnabled ? [] : loadComplementos(),
   );
   const [loja, setLoja] = useState<LojaInfo>(loadLoja);
-  const [itemModal, setItemModal] = useState<Produto | null>(null);
+  const [itemModal, setItemModal] = useState<ItemModalState | null>(null);
 
   const [tab, setTab] = useState<Tab>('vendas');
   const [pinOp, setPinOp] = useState<Operador | null>(null);
@@ -112,6 +122,7 @@ function App() {
   const syncingRef = useRef(false);
   const storeIdRef = useRef(storeId);
   storeIdRef.current = storeId;
+  const serverVendasRef = useRef<Venda[]>([]);
 
   const produtosFiltrados = useMemo(() => {
     return produtos.filter((p) => {
@@ -123,6 +134,12 @@ function App() {
   }, [produtos, categoriaId, busca]);
 
   const total = useMemo(() => carrinho.reduce((s, i) => s + i.subtotal, 0), [carrinho]);
+
+  const corPorCategoriaId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of categorias) map.set(String(c.id), normalizeCategoriaCor(c.cor));
+    return map;
+  }, [categorias]);
   const troco = useMemo(() => {
     if (pagamento !== 'Dinheiro') return 0;
     return Math.max(0, (parseFloat(valorRecebido) || 0) - total);
@@ -155,13 +172,24 @@ function App() {
       setProdutos(data.produtos);
       setSenhaConfig(data.senhaConfig);
       saveSenhaConfig(data.senhaConfig);
-      setVendas(mergeVendasForDisplay(data.vendas, loadVendas()));
+      serverVendasRef.current = data.vendas;
+      setVendas(syncVendasDisplayFromServer(data.vendas));
       setStoreId(sid);
-      setCloudReady(true);
       setPendingCount(countPendingSales());
     },
     [setSenhaConfig],
   );
+
+  const refreshVendasFromCloud = useCallback(async (sid: string) => {
+    if (!isPdvCloudEnabled || !isOnline()) return;
+    try {
+      const server = await fetchPdvVendas(sid);
+      serverVendasRef.current = server;
+      setVendas(syncVendasDisplayFromServer(server));
+    } catch {
+      /* lista local permanece se a rede falhar */
+    }
+  }, []);
 
   const runSync = useCallback(async (silent = false, sid?: string) => {
     const effectiveStoreId = sid ?? storeIdRef.current;
@@ -187,22 +215,23 @@ function App() {
       } else if (result.failed > 0 && !silent) {
         notify(result.lastError ?? 'Falha ao sincronizar');
       }
+      await refreshVendasFromCloud(effectiveStoreId);
     } finally {
       syncingRef.current = false;
       setSyncing(false);
     }
-  }, []);
+  }, [refreshVendasFromCloud]);
 
   const loadFromCache = useCallback(
-    (sid: string) => {
-      const snap = loadSnapshot(sid);
+    (sid?: string | null) => {
+      const snap = loadSnapshotForBootstrap(sid ?? null);
       if (!snap) {
         setBootError('Sem dados no tablet. Conecte à internet uma vez para baixar a loja.');
-        setCloudReady(false);
         return false;
       }
-      applyBootstrap(snap.bootstrap, sid);
-      setVendas(loadVendas());
+      const resolved = normalizeStoreId(snap.storeId) ?? snap.storeId;
+      saveConfiguredStoreId(resolved);
+      applyBootstrap(snap.bootstrap, resolved);
       setBootError('');
       return true;
     },
@@ -221,7 +250,6 @@ function App() {
       const background = options?.background;
       if (!background) {
         setBootLoading(true);
-        setCloudReady(false);
       }
       setBootError('');
       try {
@@ -235,7 +263,6 @@ function App() {
           if (!background) notify('Modo offline — usando dados salvos no tablet');
         } else {
           setBootError(formatPdvError(e));
-          setCloudReady(false);
         }
       } finally {
         if (!background) setBootLoading(false);
@@ -257,30 +284,48 @@ function App() {
       if (!session?.user) {
         setNeedsAuthLogin(true);
         setUsuario(null);
-        setCloudReady(false);
         return;
       }
       setNeedsAuthLogin(false);
-      const sid = await getCurrentStoreIdFromAuth();
+      setUsuario(operadorFromAuthUser(session.user));
+
+      let sid = getConfiguredStoreId();
+      if (isOnline()) {
+        sid = (await resolveStoreIdForSession({ refreshFromServer: true })) ?? sid;
+      }
+      if (!sid) {
+        const snap = loadLatestSnapshot();
+        sid = snap ? normalizeStoreId(snap.storeId) : null;
+      }
       if (!sid) {
         setBootError('Conta sem loja vinculada. Cadastre-se no dashboard com o mesmo e-mail.');
-        setCloudReady(false);
         return;
       }
       saveConfiguredStoreId(sid);
-      setUsuario(operadorFromAuthUser(session.user));
+
       if (isOnline()) {
         await loadCloudRef.current(sid);
       } else if (loadFromCache(sid)) {
-        notify('Modo offline — dados salvos no tablet');
+        notify('Modo offline — vendas serão sincronizadas quando a internet voltar.');
       } else {
-        setBootError('Sem internet e sem dados locais. Conecte uma vez após entrar.');
-        setCloudReady(false);
+        setBootError('Sem internet e sem dados locais. Abra o app uma vez com Wi‑Fi/4G para baixar a loja.');
+        return;
       }
     } catch (e) {
+      const sid = getConfiguredStoreId();
+      if (sid && loadFromCache(sid)) {
+        const session = await getPdvAuthSession();
+        if (session?.user) {
+          setUsuario(operadorFromAuthUser(session.user));
+          setNeedsAuthLogin(false);
+          setBootError('');
+          notify('Modo offline — usando dados salvos no tablet');
+          return;
+        }
+      }
       setBootError(formatPdvError(e));
-      setCloudReady(false);
-      if (String(formatPdvError(e)).toLowerCase().includes('jwt') || String(e).includes('session')) {
+      const msg = String(formatPdvError(e)).toLowerCase();
+      if (msg.includes('jwt') || msg.includes('session') || msg.includes('auth')) {
         setNeedsAuthLogin(true);
       }
     }
@@ -297,6 +342,13 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    if (!authChecking) {
+      void SplashScreen.hide({ fadeOutDuration: 320 });
+    }
+  }, [authChecking]);
+
+  useEffect(() => {
     if (needsAuthLogin || authChecking || bootLoading) return;
     if (isPdvCloudEnabled) return;
     const session = loadPdvSession();
@@ -307,27 +359,56 @@ function App() {
 
   useEffect(() => {
     if (!isPdvCloudEnabled) return;
-    const onOnline = () => {
+    const syncWhenPossible = () => {
       const sid = storeIdRef.current ?? getConfiguredStoreId();
-      if (!sid) return;
+      if (!sid || !isOnline()) return;
       void loadCloudRef.current(sid, { background: true }).then(() => runSyncRef.current(true, sid));
     };
-    window.addEventListener('online', onOnline);
-    return () => window.removeEventListener('online', onOnline);
+    window.addEventListener('online', syncWhenPossible);
+    const interval = window.setInterval(() => {
+      if (countPendingSales() > 0) syncWhenPossible();
+    }, 45_000);
+    return () => {
+      window.removeEventListener('online', syncWhenPossible);
+      window.clearInterval(interval);
+    };
   }, []);
+
+  useEffect(() => {
+    if (tab !== 'recibos' || !isPdvCloudEnabled || !storeId || !isOnline()) return;
+    void refreshVendasFromCloud(storeId);
+  }, [tab, storeId, refreshVendasFromCloud]);
 
   const newCarrinhoItemId = () => (isPdvCloudEnabled ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
-  const addItemAoCarrinho = (item: ItemCarrinho) => {
-    setCarrinho((c) => [...c, item]);
-    notify(`${item.quantidade}x ${item.nome} adicionado`);
+  const confirmItemAoCarrinho = (item: ItemCarrinho) => {
+    const editando = Boolean(itemModal?.editItem);
+    setCarrinho((c) => {
+      const idx = c.findIndex((i) => i.carrinhoItemId === item.carrinhoItemId);
+      if (idx >= 0) {
+        const next = [...c];
+        next[idx] = item;
+        return next;
+      }
+      return [...c, item];
+    });
+    notify(editando ? 'Item atualizado' : `${item.quantidade}x ${item.nome} adicionado`);
     setItemModal(null);
+  };
+
+  const abrirEdicaoItemCarrinho = (item: ItemCarrinho) => {
+    const prod = produtos.find((p) => String(p.id) === String(item.produtoId));
+    if (!prod) {
+      notify('Produto não encontrado no cardápio');
+      return;
+    }
+    setItemModal({ produto: prod, editItem: item });
   };
 
   const handleProdutoClick = (prod: Produto) => {
     const grupos = gruposComplementoDoProduto(prod, complementos);
     if (grupos.length === 0) {
-      addItemAoCarrinho({
+      confirmItemAoCarrinho({
         carrinhoItemId: newCarrinhoItemId(),
         produtoId: prod.id,
         nome: prod.nome,
@@ -340,7 +421,7 @@ function App() {
       });
       return;
     }
-    setItemModal(prod);
+    setItemModal({ produto: prod });
   };
 
   const irParaPagamento = useCallback(() => {
@@ -398,11 +479,9 @@ function App() {
       operadorNome: usuario.nome,
     };
 
-    setVendas(persistVenda(venda));
-    avancarSenhaPosVenda();
-
     if (isPdvCloudEnabled && storeId) {
       addPendingSale(venda);
+      setVendas(syncVendasDisplayFromServer(serverVendasRef.current));
       setPendingCount(countPendingSales());
       if (isOnline()) {
         const result = await syncPendingSales(
@@ -410,10 +489,15 @@ function App() {
           advanceSenhaAfterSale(applyDailyReset(senhaConfig)),
         );
         setPendingCount(result.remaining);
+        await refreshVendasFromCloud(storeId);
       } else {
         notify('Venda salva offline. Envia quando a internet voltar.');
       }
+    } else {
+      setVendas(persistVenda(venda));
     }
+
+    avancarSenhaPosVenda();
 
     setUltimaVenda(venda);
     setCarrinho([]);
@@ -508,11 +592,7 @@ function App() {
   };
 
   if (isPdvCloudEnabled && authChecking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-sm font-bold text-slate-400">
-        Verificando sessão…
-      </div>
-    );
+    return <BootSplash message="Iniciando Gtech Pay…" />;
   }
 
   if (isPdvCloudEnabled && needsAuthLogin) {
@@ -529,11 +609,7 @@ function App() {
   }
 
   if (bootLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-sm font-bold text-slate-400">
-        Carregando dados da loja…
-      </div>
-    );
+    return <BootSplash message="Carregando dados da loja…" />;
   }
 
   if (bootError && isPdvCloudEnabled) {
@@ -541,13 +617,30 @@ function App() {
       <div className="min-h-screen flex items-center justify-center p-4 bg-slate-950">
         <div className="max-w-md text-center space-y-3">
           <p className="text-red-400 font-bold text-sm">{bootError}</p>
+          {getConfiguredStoreId() && (
+            <button
+              type="button"
+              onClick={() => {
+                if (loadFromCache(getConfiguredStoreId())) {
+                  void getPdvAuthSession().then((session) => {
+                    if (session?.user) {
+                      setUsuario(operadorFromAuthUser(session.user));
+                      setNeedsAuthLogin(false);
+                    }
+                  });
+                }
+              }}
+              className="px-4 py-2 bg-indigo-600 rounded-xl text-xs font-bold"
+            >
+              Usar dados salvos (offline)
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
               void signOutPdv();
               setNeedsAuthLogin(true);
               setBootError('');
-              setCloudReady(false);
               setUsuario(null);
             }}
             className="px-4 py-2 bg-slate-800 rounded-xl text-xs font-bold"
@@ -561,11 +654,7 @@ function App() {
 
   if (!usuario) {
     if (isPdvCloudEnabled) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-sm font-bold text-slate-400">
-          Carregando…
-        </div>
-      );
+      return <BootSplash message="Preparando o PDV…" />;
     }
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-slate-950">
@@ -723,7 +812,6 @@ function App() {
               if (isPdvCloudEnabled) {
                 void signOutPdv();
                 setNeedsAuthLogin(true);
-                setCloudReady(false);
               }
             }}
             className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold border border-red-500/40 text-red-400"
@@ -733,10 +821,16 @@ function App() {
         </nav>
       </header>
 
-      {isPdvCloudEnabled && cloudReady && (
+      {isPdvCloudEnabled && storeId && (
         <div className="shrink-0 px-2 py-1.5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900/80 text-[10px]">
           <span className={`font-bold ${isOnline() ? 'text-emerald-400' : 'text-amber-400'}`}>
-            {isOnline() ? 'Online' : 'Offline — vendas salvas no tablet'}
+            {isOnline()
+              ? pendingCount > 0
+                ? `Online — ${pendingCount} venda(s) aguardando envio`
+                : 'Online'
+              : pendingCount > 0
+                ? `Offline — ${pendingCount} venda(s) no tablet (envia ao conectar)`
+                : 'Offline — vendas salvas no tablet'}
           </span>
           {pendingCount > 0 && (
             <button
@@ -887,16 +981,28 @@ function App() {
                           {item.opcoes.length > 0 && (
                             <p className="text-[10px] text-slate-500 mt-0.5">{item.opcoes.map((o) => o.nome).join(' · ')}</p>
                           )}
+                          {item.observacao && (
+                            <p className="text-[10px] text-amber-400/90 mt-0.5">Obs: {item.observacao}</p>
+                          )}
                         </div>
                         <div className="shrink-0 text-right">
                           <span className="font-mono font-bold text-emerald-400">R$ {item.subtotal.toFixed(2)}</span>
-                          <button
-                            type="button"
-                            className="block ml-auto mt-1 text-red-400 font-bold"
-                            onClick={() => setCarrinho((c) => c.filter((i) => i.carrinhoItemId !== item.carrinhoItemId))}
-                          >
-                            Remover
-                          </button>
+                          <div className="flex gap-2 justify-end mt-1">
+                            <button
+                              type="button"
+                              className="text-indigo-400 font-bold"
+                              onClick={() => abrirEdicaoItemCarrinho(item)}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              className="text-red-400 font-bold"
+                              onClick={() => setCarrinho((c) => c.filter((i) => i.carrinhoItemId !== item.carrinhoItemId))}
+                            >
+                              Remover
+                            </button>
+                          </div>
                         </div>
                       </li>
                     ))}
@@ -917,18 +1023,22 @@ function App() {
               >
                 Todos
               </button>
-              {categorias.map((c) => (
+              {categorias.map((c) => {
+                const active = categoriaId === String(c.id);
+                return (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => setCategoriaId(String(c.id))}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap ${
-                    categoriaId === String(c.id) ? 'bg-indigo-600' : 'bg-slate-800'
+                  style={categoriaChipStyle(c.cor, active)}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap border-2 shrink-0 ${
+                    active ? 'text-white shadow-sm' : 'text-slate-200'
                   }`}
                 >
                   {c.nome}
                 </button>
-              ))}
+                );
+              })}
               <input
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
@@ -937,17 +1047,21 @@ function App() {
               />
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scroll min-h-0">
-              {produtosFiltrados.map((p) => (
+              {produtosFiltrados.map((p) => {
+                const catCor = corPorCategoriaId.get(String(p.categoriaId));
+                return (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => handleProdutoClick(p)}
-                  className="w-full flex justify-between items-center p-3 bg-slate-900 rounded-2xl border border-slate-800 hover:border-indigo-500 text-left"
+                  style={produtoCategoriaStyle(catCor)}
+                  className="w-full flex justify-between items-center p-3 pl-2.5 bg-slate-900 rounded-2xl border border-slate-800 hover:border-slate-600 text-left"
                 >
                   <span className="text-xs font-bold uppercase">{p.nome}</span>
                   <span className="font-mono text-emerald-400 font-bold text-sm">R$ {p.preco.toFixed(2)}</span>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </section>
 
@@ -991,13 +1105,19 @@ function App() {
               {carrinho.map((item) => (
                 <div key={item.carrinhoItemId} className="p-2 bg-slate-800 rounded-xl border border-slate-700 text-xs">
                   <div className="flex justify-between font-bold gap-2">
-                    <span>
-                      {item.quantidade > 1 ? `${item.quantidade}x ` : ''}
-                      {item.nome}
-                    </span>
                     <button
                       type="button"
+                      className="text-left min-w-0 flex-1 hover:text-indigo-300"
+                      onClick={() => abrirEdicaoItemCarrinho(item)}
+                    >
+                      {item.quantidade > 1 ? `${item.quantidade}x ` : ''}
+                      {item.nome}
+                    </button>
+                    <button
+                      type="button"
+                      className="shrink-0 text-slate-400 hover:text-red-400"
                       onClick={() => setCarrinho((c) => c.filter((i) => i.carrinhoItemId !== item.carrinhoItemId))}
+                      aria-label="Remover"
                     >
                       ✕
                     </button>
@@ -1006,7 +1126,16 @@ function App() {
                     <p className="text-[10px] text-slate-400 mt-0.5">{item.opcoes.map((o) => o.nome).join(' · ')}</p>
                   )}
                   {item.observacao && <p className="text-[10px] text-amber-400/90 mt-0.5">Obs: {item.observacao}</p>}
-                  <span className="text-emerald-400 font-mono">R$ {item.subtotal.toFixed(2)}</span>
+                  <div className="flex items-center justify-between mt-1 gap-2">
+                    <button
+                      type="button"
+                      className="text-[10px] font-bold text-indigo-400"
+                      onClick={() => abrirEdicaoItemCarrinho(item)}
+                    >
+                      Editar
+                    </button>
+                    <span className="text-emerald-400 font-mono ml-auto">R$ {item.subtotal.toFixed(2)}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1058,16 +1187,24 @@ function App() {
               <p className="text-[10px] font-bold uppercase text-slate-500">Resumo do pedido</p>
               {carrinho.map((item) => (
                 <div key={item.carrinhoItemId} className="text-xs border-b border-slate-800 last:border-0 pb-2 last:pb-0">
-                  <div className="flex justify-between font-bold">
+                  <div className="flex justify-between font-bold gap-2">
                     <span>
                       {item.quantidade > 1 ? `${item.quantidade}x ` : ''}
                       {item.nome}
                     </span>
-                    <span className="font-mono text-emerald-400">R$ {item.subtotal.toFixed(2)}</span>
+                    <span className="font-mono text-emerald-400 shrink-0">R$ {item.subtotal.toFixed(2)}</span>
                   </div>
                   {item.opcoes.length > 0 && (
                     <p className="text-[10px] text-slate-500">{item.opcoes.map((o) => o.nome).join(' · ')}</p>
                   )}
+                  {item.observacao && <p className="text-[10px] text-amber-400/90">Obs: {item.observacao}</p>}
+                  <button
+                    type="button"
+                    className="mt-1 text-[10px] font-bold text-indigo-400"
+                    onClick={() => abrirEdicaoItemCarrinho(item)}
+                  >
+                    Editar item
+                  </button>
                 </div>
               ))}
               <div className="flex justify-between items-center pt-2 border-t border-slate-800">
@@ -1154,12 +1291,13 @@ function App() {
         </div>
       )}
 
-      {itemModal && tab === 'vendas' && etapaVenda === 'pedido' && (
+      {itemModal && tab === 'vendas' && (
         <ComplementoItemModal
-          produto={itemModal}
+          produto={itemModal.produto}
           complementos={complementos}
+          initialItem={itemModal.editItem}
           onClose={() => setItemModal(null)}
-          onConfirm={addItemAoCarrinho}
+          onConfirm={confirmItemAoCarrinho}
           newCarrinhoItemId={newCarrinhoItemId}
         />
       )}

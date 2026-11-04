@@ -1,4 +1,5 @@
 import type { Venda } from '@gtech/shared';
+import { saveVendas } from '@gtech/shared';
 import type { PdvBootstrap } from './pdvApi';
 
 export const SNAPSHOT_KEY = 'gtech_pdv_snapshot';
@@ -47,8 +48,26 @@ export function saveSnapshot(storeId: string, bootstrap: PdvBootstrap): void {
 
 export function loadSnapshot(storeId: string): StoredSnapshot | null {
   const snap = readJson<StoredSnapshot | null>(SNAPSHOT_KEY, null);
-  if (!snap || snap.storeId !== storeId) return null;
+  if (!snap) return null;
+  if (normalizeSnapshotStoreId(snap.storeId) !== normalizeSnapshotStoreId(storeId)) return null;
   return snap;
+}
+
+export function loadLatestSnapshot(): StoredSnapshot | null {
+  return readJson<StoredSnapshot | null>(SNAPSHOT_KEY, null);
+}
+
+function normalizeSnapshotStoreId(id: string): string {
+  return String(id).trim().toLowerCase();
+}
+
+/** Carrega catálogo salvo no tablet (preferindo o storeId informado). */
+export function loadSnapshotForBootstrap(preferredStoreId: string | null): StoredSnapshot | null {
+  if (preferredStoreId) {
+    const hit = loadSnapshot(preferredStoreId);
+    if (hit) return hit;
+  }
+  return loadLatestSnapshot();
 }
 
 export function loadPendingSales(): Venda[] {
@@ -76,6 +95,12 @@ export function mergeVendasForDisplay(server: Venda[], pending: Venda[]): Venda[
   for (const v of server) map.set(v.id, v);
   for (const v of pending) map.set(v.id, v);
   return [...map.values()].sort((a, b) => b.timestamp - a.timestamp);
+}
+
+export function syncVendasDisplayFromServer(server: Venda[]): Venda[] {
+  const merged = mergeVendasForDisplay(server, loadPendingSales());
+  saveVendas(merged);
+  return merged;
 }
 
 export function loadOperadorPinCache(): Record<string, string> {

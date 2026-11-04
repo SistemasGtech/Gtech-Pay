@@ -4,6 +4,7 @@ import type { Complemento, ItemCarrinho, Produto } from '@gtech/shared';
 type Props = {
   produto: Produto;
   complementos: Complemento[];
+  initialItem?: ItemCarrinho | null;
   onClose: () => void;
   onConfirm: (item: ItemCarrinho) => void;
   newCarrinhoItemId: () => string;
@@ -15,7 +16,15 @@ export function gruposComplementoDoProduto(produto: Produto, complementos: Compl
   return order.map((id) => byId.get(id)).filter((c): c is Complemento => Boolean(c));
 }
 
-export function ComplementoItemModal({ produto, complementos, onClose, onConfirm, newCarrinhoItemId }: Props) {
+export function ComplementoItemModal({
+  produto,
+  complementos,
+  initialItem,
+  onClose,
+  onConfirm,
+  newCarrinhoItemId,
+}: Props) {
+  const editando = Boolean(initialItem);
   const grupos = useMemo(
     () => gruposComplementoDoProduto(produto, complementos),
     [produto, complementos],
@@ -27,11 +36,17 @@ export function ComplementoItemModal({ produto, complementos, onClose, onConfirm
   const [erro, setErro] = useState('');
 
   useEffect(() => {
-    setOpcoesIds([]);
-    setQtd(1);
-    setObservacao('');
+    if (initialItem) {
+      setOpcoesIds(initialItem.opcoes.map((o) => String(o.id)));
+      setQtd(Math.max(1, initialItem.quantidade));
+      setObservacao(initialItem.observacao ?? '');
+    } else {
+      setOpcoesIds([]);
+      setQtd(1);
+      setObservacao('');
+    }
     setErro('');
-  }, [produto.id, grupos]);
+  }, [produto.id, grupos, initialItem?.carrinhoItemId]);
 
   const precoUnitario = useMemo(() => {
     let extra = 0;
@@ -63,7 +78,7 @@ export function ComplementoItemModal({ produto, complementos, onClose, onConfirm
     }
 
     onConfirm({
-      carrinhoItemId: newCarrinhoItemId(),
+      carrinhoItemId: initialItem?.carrinhoItemId ?? newCarrinhoItemId(),
       produtoId: produto.id,
       nome: produto.nome,
       precoBase: produto.preco,
@@ -80,6 +95,9 @@ export function ComplementoItemModal({ produto, complementos, onClose, onConfirm
       <div className="bg-slate-900 text-white rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col border border-slate-800 shadow-2xl overflow-hidden">
         <div className="flex items-start justify-between border-b border-slate-800 p-4 shrink-0">
           <div className="min-w-0 pr-2">
+            {editando && (
+              <p className="text-[10px] font-black uppercase text-indigo-400 mb-0.5">Editar item</p>
+            )}
             <h3 className="text-sm font-black uppercase truncate">{produto.nome}</h3>
             <span className="inline-block mt-1 bg-slate-800 text-emerald-400 text-[11px] font-mono font-black px-2 py-0.5 rounded-lg border border-slate-700">
               Base R$ {Number(produto.preco).toFixed(2)}
@@ -160,7 +178,7 @@ export function ComplementoItemModal({ produto, complementos, onClose, onConfirm
             onClick={confirmar}
             className="flex-1 min-w-[140px] flex items-center justify-between gap-2 bg-indigo-600 hover:bg-indigo-500 py-3 px-4 rounded-2xl text-xs font-black uppercase"
           >
-            <span>Incluir</span>
+            <span>{editando ? 'Salvar' : 'Incluir'}</span>
             <span className="font-mono bg-indigo-800/80 px-2 py-0.5 rounded-lg">R$ {(precoUnitario * qtd).toFixed(2)}</span>
           </button>
         </div>

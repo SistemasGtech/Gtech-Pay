@@ -1,6 +1,6 @@
 {
-  "versionCode": 14,
-  "versionName": "1.0.14",
-  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.14/app-debug.apk",
-  "notes": "Complementos opcionais no pedido. Removido campo cliente. Ajustes no cupom e no dashboard."
+  "versionCode": 15,
+  "versionName": "1.0.15",
+  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.15/app-debug.apk",
+  "notes": "PDV offline com sync automático. Splash profissional. Editar itens do carrinho. Cores das categorias. Recibos alinhados ao dashboard."
 }

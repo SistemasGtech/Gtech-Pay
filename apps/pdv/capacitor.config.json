@@ -4,6 +4,16 @@
   "webDir": "dist",
   "android": {
     "allowMixedContent": true,
-    "includePlugins": ["@devlas/capacitor-thermal-printer"]
+    "includePlugins": ["@devlas/capacitor-thermal-printer", "@capacitor/splash-screen"]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "backgroundColor": "#0f172a",
+      "androidScaleType": "CENTER",
+      "showSpinner": false,
+      "splashFullScreen": true,
+      "splashImmersive": true
+    }
   }
 }
