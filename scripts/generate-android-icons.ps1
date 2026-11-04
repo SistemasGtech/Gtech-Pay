@@ -15,7 +15,7 @@ $BgColor = [System.Drawing.Color]::FromArgb(255, 15, 23, 42)
 # Fundo igual ao tema do app / splash nativo (#0f172a)
 $SplashBgColor = $BgColor
 # Conteudo dentro da mascara do adaptive icon (~66% do canvas)
-$SafeScale = 0.66
+$SafeScale = 0.72
 
 function New-CroppedSquare([System.Drawing.Image]$img) {
   $side = [Math]::Min($img.Width, $img.Height)
@@ -75,8 +75,8 @@ $source = [System.Drawing.Image]::FromFile($src)
 try {
   $square = New-CroppedSquare $source
 
-  # PNG quadrado para telas de login / favicon (512px)
-  $ui512 = New-LauncherBitmap $square 512 0.92
+  # PNG quadrado para telas de login / favicon (512px) — arte já é ícone quadrado
+  $ui512 = New-LauncherBitmap $square 512 0.98
   Save-Png $ui512 (Join-Path $repoRoot 'apps\pdv\public\gtech-pay-icon-square.png')
   Save-Png $ui512 (Join-Path $repoRoot 'apps\dashboard\public\gtech-pay-icon-square.png')
   Save-Png $ui512 (Join-Path $android 'drawable-nodpi\splash_logo.png')
@@ -94,8 +94,8 @@ try {
     $folder = $entry.Key
     $sz = [int]$entry.Value
 
-    # Legacy / round: fundo + icone ~88%
-    $legacy = New-LauncherBitmap $square $sz 0.88
+    # Legacy / round: fundo + icone
+    $legacy = New-LauncherBitmap $square $sz 0.92
     Save-Png $legacy (Join-Path $android "$folder\ic_launcher.png")
     Save-Png $legacy (Join-Path $android "$folder\ic_launcher_round.png")
     $legacy.Dispose()

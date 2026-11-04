@@ -677,10 +677,10 @@ function App() {
       <div className="min-h-screen flex items-center justify-center p-4 bg-slate-950">
         <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
           <div className="text-center">
-            <p className="text-indigo-400 text-[11px] font-black uppercase">Gtech PDV</p>
-            <h1 className="font-black text-lg uppercase">{loja.nome}</h1>
+            <p className="text-indigo-400 text-sm font-black uppercase">Gtech PDV</p>
+            <h1 className="font-black text-xl uppercase">{loja.nome}</h1>
             {isPdvCloudEnabled && (
-              <p className="text-[10px] text-emerald-400 font-bold mt-1">Conectado à nuvem</p>
+              <p className="text-xs text-emerald-400 font-bold mt-1">Conectado à nuvem</p>
             )}
           </div>
           {erroLogin && <p className="text-red-400 text-xs text-center font-bold">{erroLogin}</p>}
@@ -709,7 +709,7 @@ function App() {
           ) : (
             <div className="space-y-3">
               <p className="text-center text-sm font-bold">{pinOp.nome}</p>
-              <p className="text-center text-[10px] font-bold uppercase text-slate-500 tracking-wide">Digite seu PIN</p>
+              <p className="text-center text-xs font-bold uppercase text-slate-500 tracking-wide">Digite seu PIN</p>
               <div className="flex justify-center gap-2.5 py-1" aria-label={`PIN ${pin.length} de 4 dígitos`}>
                 {[0, 1, 2, 3].map((i) => {
                   const filled = pin.length > i;
@@ -723,7 +723,7 @@ function App() {
                       }`}
                     >
                       <span
-                        className={`text-2xl font-black leading-none ${
+                        className={`text-3xl font-black leading-none ${
                           filled ? 'text-indigo-300' : 'text-slate-700'
                         }`}
                       >
@@ -765,12 +765,12 @@ function App() {
                   type="button"
                   disabled={pin.length !== 4 || pinChecking}
                   onClick={salvarPinEEntrar}
-                  className="py-3 rounded-2xl bg-emerald-600 disabled:bg-slate-800 disabled:text-slate-500 font-black text-[10px] uppercase leading-tight border border-emerald-500/50 disabled:border-slate-700"
+                  className="py-3 rounded-2xl bg-emerald-600 disabled:bg-slate-800 disabled:text-slate-500 font-black text-xs uppercase leading-tight border border-emerald-500/50 disabled:border-slate-700"
                 >
                   Salvar PIN
                 </button>
               </div>
-              <p className="text-[10px] text-center text-slate-500 leading-snug">
+              <p className="text-xs text-center text-slate-500 leading-snug">
                 <strong className="text-slate-400">Salvar PIN</strong> mantém você logado ao reabrir o app (valide uma vez com internet).
               </p>
               <button type="button" onClick={() => setPinOp(null)} className="text-xs text-indigo-400 w-full">
@@ -793,7 +793,7 @@ function App() {
 
       <header className="shrink-0 flex flex-wrap gap-2 items-center justify-between p-2 border-b border-slate-800 bg-slate-900">
         <div>
-          <p className="text-[10px] text-cyan-400/90 font-black uppercase tracking-wider">Gtech Pay</p>
+          <p className="text-xs text-cyan-400/90 font-black uppercase tracking-wider">Gtech Pay</p>
           <p className="text-xs font-bold truncate max-w-[200px]">{usuario.nome}</p>
         </div>
         <nav className="flex flex-wrap gap-1">
@@ -813,7 +813,7 @@ function App() {
                 if (id !== 'vendas') setEtapaVenda('pedido');
                 setTab(id);
               }}
-              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border ${
+              className={`px-2.5 py-1.5 rounded-xl text-sm font-bold border ${
                 tab === id ? 'bg-indigo-600 border-indigo-500' : 'bg-slate-800 border-slate-700'
               }`}
             >
@@ -831,7 +831,7 @@ function App() {
                 setNeedsAuthLogin(true);
               }
             }}
-            className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold border border-red-500/40 text-red-400"
+            className="px-2.5 py-1.5 rounded-xl text-sm font-bold border border-red-500/40 text-red-400"
           >
             Sair
           </button>
@@ -839,7 +839,7 @@ function App() {
       </header>
 
       {isPdvCloudEnabled && storeId && (
-        <div className="shrink-0 px-2 py-1.5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900/80 text-[10px]">
+        <div className="shrink-0 px-2 py-1.5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900/80 text-xs">
           <span
             className={`font-bold leading-snug ${
               connectivity.network && connectivity.cloud ? 'text-emerald-400' : 'text-amber-400'
@@ -935,14 +935,14 @@ function App() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-black">Pedido</span>
-                    <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1 rounded bg-slate-800 border border-slate-600 text-[11px] font-mono font-black">
+                    <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1 rounded bg-slate-800 border border-slate-600 text-sm font-mono font-black">
                       {qtdItensCarrinho}
                     </span>
                     <span className="text-slate-500 text-xs" aria-hidden>
                       {pedidoAberto ? '▴' : '▾'}
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                  <p className="text-sm text-slate-400 mt-0.5 truncate">
                     Total: <span className="font-mono font-bold text-white">R$ {total.toFixed(2)}</span>
                   </p>
                 </div>
@@ -964,7 +964,7 @@ function App() {
               <div className="max-h-[min(40vh,360px)] overflow-y-auto custom-scroll">
                 {controleSenhaAtivo && (
                   <div className="p-3 flex items-center justify-between border-b border-slate-800 bg-slate-950">
-                    <span className="text-[10px] text-slate-400 uppercase font-bold">Senha</span>
+                    <span className="text-xs text-slate-400 uppercase font-bold">Senha</span>
                     <div className="flex items-center gap-2 bg-amber-400 text-slate-950 px-3 py-1 rounded-2xl">
                       <button
                         type="button"
@@ -977,7 +977,7 @@ function App() {
                       >
                         −
                       </button>
-                      <span className="font-mono font-black text-xl">#{senhaAtual}</span>
+                      <span className="font-mono font-black text-3xl">#{senhaAtual}</span>
                       <button
                         type="button"
                         onClick={() =>
@@ -1004,10 +1004,10 @@ function App() {
                             {item.nome}
                           </p>
                           {item.opcoes.length > 0 && (
-                            <p className="text-[10px] text-slate-500 mt-0.5">{item.opcoes.map((o) => o.nome).join(' · ')}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{item.opcoes.map((o) => o.nome).join(' · ')}</p>
                           )}
                           {item.observacao && (
-                            <p className="text-[10px] text-amber-400/90 mt-0.5">Obs: {item.observacao}</p>
+                            <p className="text-xs text-amber-400/90 mt-0.5">Obs: {item.observacao}</p>
                           )}
                         </div>
                         <div className="shrink-0 text-right">
@@ -1043,7 +1043,7 @@ function App() {
                 <button
                   type="button"
                   onClick={() => setCategoriaId('todas')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold leading-tight ${
+                  className={`px-2.5 py-1 rounded-lg text-sm font-bold leading-tight ${
                     categoriaId === 'todas' ? 'bg-indigo-600' : 'bg-slate-800'
                   }`}
                 >
@@ -1057,7 +1057,7 @@ function App() {
                       type="button"
                       onClick={() => setCategoriaId(String(c.id))}
                       style={categoriaChipStyle(c.cor, active)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold leading-tight border-2 max-w-full ${
+                      className={`px-2.5 py-1 rounded-lg text-sm font-bold leading-tight border-2 max-w-full ${
                         active ? 'text-white shadow-sm' : 'text-slate-200'
                       }`}
                     >
@@ -1079,7 +1079,7 @@ function App() {
                   className="w-full flex justify-between items-center p-3 pl-2.5 bg-slate-900 rounded-2xl border border-slate-800 hover:border-slate-600 text-left"
                 >
                   <span className="text-xs font-bold uppercase">{p.nome}</span>
-                  <span className="font-mono text-emerald-400 font-bold text-sm">R$ {p.preco.toFixed(2)}</span>
+                  <span className="font-mono text-emerald-400 font-bold text-base">R$ {p.preco.toFixed(2)}</span>
                 </button>
                 );
               })}
@@ -1091,8 +1091,8 @@ function App() {
             {controleSenhaAtivo && (
               <div className="p-3 flex items-center justify-between border-b border-slate-800 bg-slate-950 shrink-0">
                 <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-bold">Senha deste pedido</span>
-                  <p className="text-[11px] text-slate-500">Ajuste antes de confirmar</p>
+                  <span className="text-xs text-slate-400 uppercase font-bold">Senha deste pedido</span>
+                  <p className="text-sm text-slate-500">Ajuste antes de confirmar</p>
                 </div>
                 <div className="flex items-center gap-2 bg-amber-400 text-slate-950 px-3 py-1 rounded-2xl">
                   <button
@@ -1106,7 +1106,7 @@ function App() {
                   >
                     −
                   </button>
-                  <span className="font-mono font-black text-2xl">#{senhaAtual}</span>
+                  <span className="font-mono font-black text-3xl">#{senhaAtual}</span>
                   <button
                     type="button"
                     onClick={() =>
@@ -1144,13 +1144,13 @@ function App() {
                     </button>
                   </div>
                   {item.opcoes.length > 0 && (
-                    <p className="text-[10px] text-slate-400 mt-0.5">{item.opcoes.map((o) => o.nome).join(' · ')}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{item.opcoes.map((o) => o.nome).join(' · ')}</p>
                   )}
-                  {item.observacao && <p className="text-[10px] text-amber-400/90 mt-0.5">Obs: {item.observacao}</p>}
+                  {item.observacao && <p className="text-xs text-amber-400/90 mt-0.5">Obs: {item.observacao}</p>}
                   <div className="flex items-center justify-between mt-1 gap-2">
                     <button
                       type="button"
-                      className="text-[10px] font-bold text-indigo-400"
+                      className="text-xs font-bold text-indigo-400"
                       onClick={() => abrirEdicaoItemCarrinho(item)}
                     >
                       Editar
@@ -1166,7 +1166,7 @@ function App() {
                 <span className="text-xs font-bold text-slate-400">
                   {carrinho.length} {carrinho.length === 1 ? 'item' : 'itens'}
                 </span>
-                <span className="text-xl font-black font-mono text-emerald-400">R$ {total.toFixed(2)}</span>
+                <span className="text-3xl font-black font-mono text-emerald-400">R$ {total.toFixed(2)}</span>
               </div>
               <button
                 type="button"
@@ -1193,8 +1193,8 @@ function App() {
             </button>
 
             <div className="space-y-1">
-              <p className="text-[10px] font-black uppercase text-indigo-400">Pagamento</p>
-              <h2 className="text-lg font-black">Fechar comanda</h2>
+              <p className="text-xs font-black uppercase text-indigo-400">Pagamento</p>
+              <h2 className="text-xl font-black">Fechar comanda</h2>
               <p className="text-xs text-slate-400">
                 {controleSenhaAtivo && (
                   <>
@@ -1205,7 +1205,7 @@ function App() {
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2">
-              <p className="text-[10px] font-bold uppercase text-slate-500">Resumo do pedido</p>
+              <p className="text-xs font-bold uppercase text-slate-500">Resumo do pedido</p>
               {carrinho.map((item) => (
                 <div key={item.carrinhoItemId} className="text-xs border-b border-slate-800 last:border-0 pb-2 last:pb-0">
                   <div className="flex justify-between font-bold gap-2">
@@ -1216,12 +1216,12 @@ function App() {
                     <span className="font-mono text-emerald-400 shrink-0">R$ {item.subtotal.toFixed(2)}</span>
                   </div>
                   {item.opcoes.length > 0 && (
-                    <p className="text-[10px] text-slate-500">{item.opcoes.map((o) => o.nome).join(' · ')}</p>
+                    <p className="text-xs text-slate-500">{item.opcoes.map((o) => o.nome).join(' · ')}</p>
                   )}
-                  {item.observacao && <p className="text-[10px] text-amber-400/90">Obs: {item.observacao}</p>}
+                  {item.observacao && <p className="text-xs text-amber-400/90">Obs: {item.observacao}</p>}
                   <button
                     type="button"
-                    className="mt-1 text-[10px] font-bold text-indigo-400"
+                    className="mt-1 text-xs font-bold text-indigo-400"
                     onClick={() => abrirEdicaoItemCarrinho(item)}
                   >
                     Editar item
@@ -1230,12 +1230,12 @@ function App() {
               ))}
               <div className="flex justify-between items-center pt-2 border-t border-slate-800">
                 <span className="text-sm font-bold">Total</span>
-                <span className="text-2xl font-black font-mono text-emerald-400">R$ {total.toFixed(2)}</span>
+                <span className="text-3xl font-black font-mono text-emerald-400">R$ {total.toFixed(2)}</span>
               </div>
             </div>
 
             <div className="space-y-2">
-              <p className="text-[10px] font-bold uppercase text-slate-500">Forma de pagamento</p>
+              <p className="text-xs font-bold uppercase text-slate-500">Forma de pagamento</p>
               <div className="grid grid-cols-2 gap-2">
                 {(['PIX', 'Cartão Crédito', 'Cartão Débito', 'Dinheiro'] as FormaPagamento[]).map((f) => (
                   <button
@@ -1245,7 +1245,7 @@ function App() {
                       setPagamento(f);
                       if (f !== 'Dinheiro') setValorRecebido('');
                     }}
-                    className={`py-3 rounded-2xl text-[11px] font-bold border ${
+                    className={`py-3 rounded-2xl text-sm font-bold border ${
                       pagamento === f ? 'bg-indigo-600 border-indigo-500' : 'border-slate-700 bg-slate-900'
                     }`}
                   >
@@ -1257,7 +1257,7 @@ function App() {
 
             {pagamento === 'Dinheiro' && (
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
-                <label className="text-[10px] font-bold uppercase text-slate-500 block">Valor recebido</label>
+                <label className="text-xs font-bold uppercase text-slate-500 block">Valor recebido</label>
                 <div className="flex gap-2 items-stretch">
                   <input
                     type="number"
@@ -1267,7 +1267,7 @@ function App() {
                     value={valorRecebido}
                     onChange={(e) => setValorRecebido(e.target.value)}
                     placeholder="0,00"
-                    className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-xl p-3 text-lg font-mono font-black"
+                    className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-xl p-3 text-xl font-mono font-black"
                   />
                   <button
                     type="button"
@@ -1278,7 +1278,7 @@ function App() {
                     className="shrink-0 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-black text-xs uppercase leading-tight text-center min-w-[88px]"
                   >
                     Cobrar
-                    <span className="block text-[10px] font-mono font-bold opacity-90 mt-0.5">
+                    <span className="block text-xs font-mono font-bold opacity-90 mt-0.5">
                       R$ {total.toFixed(2)}
                     </span>
                   </button>
@@ -1286,7 +1286,7 @@ function App() {
                 {(parseFloat(valorRecebido) || 0) >= total && total > 0 && (
                   <div className="flex justify-between items-center bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
                     <span className="text-xs font-bold text-emerald-300">Troco</span>
-                    <span className="text-xl font-black font-mono text-emerald-400">R$ {troco.toFixed(2)}</span>
+                    <span className="text-2xl font-black font-mono text-emerald-400">R$ {troco.toFixed(2)}</span>
                   </div>
                 )}
                 {(parseFloat(valorRecebido) || 0) > 0 && (parseFloat(valorRecebido) || 0) < total && (

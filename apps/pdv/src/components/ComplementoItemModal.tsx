@@ -96,10 +96,10 @@ export function ComplementoItemModal({
         <div className="flex items-start justify-between border-b border-slate-800 p-4 shrink-0">
           <div className="min-w-0 pr-2">
             {editando && (
-              <p className="text-[10px] font-black uppercase text-indigo-400 mb-0.5">Editar item</p>
+              <p className="text-xs font-black uppercase text-indigo-400 mb-0.5">Editar item</p>
             )}
             <h3 className="text-sm font-black uppercase truncate">{produto.nome}</h3>
-            <span className="inline-block mt-1 bg-slate-800 text-emerald-400 text-[11px] font-mono font-black px-2 py-0.5 rounded-lg border border-slate-700">
+            <span className="inline-block mt-1 bg-slate-800 text-emerald-400 text-sm font-mono font-black px-2 py-0.5 rounded-lg border border-slate-700">
               Base R$ {Number(produto.preco).toFixed(2)}
             </span>
           </div>
@@ -117,7 +117,7 @@ export function ComplementoItemModal({
         <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scroll">
           {grupos.map((grupo) => (
             <div key={grupo.id} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-2">
-              <p className="text-[10px] font-black uppercase text-slate-400 border-b border-slate-800 pb-2">
+              <p className="text-xs font-black uppercase text-slate-400 border-b border-slate-800 pb-2">
                 {grupo.nome}
                 <span className="normal-case font-bold text-slate-600 ml-1">· opcional · várias</span>
               </p>
@@ -147,7 +147,7 @@ export function ComplementoItemModal({
           ))}
 
           <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
-            <label className="text-[10px] font-black uppercase text-slate-400">Observação</label>
+            <label className="text-xs font-black uppercase text-slate-400">Observação</label>
             <textarea
               rows={2}
               value={observacao}
@@ -160,7 +160,7 @@ export function ComplementoItemModal({
 
         <div className="border-t border-slate-800 p-4 flex flex-wrap items-center gap-3 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Qtd</span>
+            <span className="text-xs font-bold text-slate-500 uppercase">Qtd</span>
             <button
               type="button"
               onClick={() => setQtd((n) => Math.max(1, n - 1))}

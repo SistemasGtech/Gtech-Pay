@@ -193,7 +193,7 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
             : 'No PC: modo navegador. No tablet use o APK instalado.'}
         </p>
         {native && (
-          <p className="text-[10px] text-emerald-400 font-bold">
+          <p className="text-xs text-emerald-400 font-bold">
             App nativo — APK 1.0.8 (precisa BLUETOOTH_CONNECT + BLUETOOTH_SCAN).
           </p>
         )}
@@ -210,7 +210,7 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
       </div>
 
       <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 space-y-3">
-        <label className="text-[10px] font-bold text-slate-400 uppercase">Modo de conexão</label>
+        <label className="text-xs font-bold text-slate-400 uppercase">Modo de conexão</label>
         <select
           value={config.transport}
           onChange={(e) =>
@@ -241,7 +241,7 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
           </div>
         )}
 
-        <label className="text-[10px] font-bold text-slate-400 uppercase">Bobina</label>
+        <label className="text-xs font-bold text-slate-400 uppercase">Bobina</label>
         <select
           value={config.larguraPapel}
           onChange={(e) => onChange({ ...config, larguraPapel: e.target.value as '58mm' | '80mm' })}
@@ -291,7 +291,7 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
 
       {native && config.transport === 'bluetooth' && (
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 space-y-3">
-          <p className="text-[10px] font-bold text-slate-400 uppercase">MAC manual (se não aparecer na lista)</p>
+          <p className="text-xs font-bold text-slate-400 uppercase">MAC manual (se não aparecer na lista)</p>
           <div className="flex gap-2">
             <input
               value={manualMac}
@@ -334,7 +334,7 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
             Diagnóstico Bluetooth
           </button>
           {diag && (
-            <pre className="text-[10px] text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">{diag}</pre>
+            <pre className="text-xs text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">{diag}</pre>
           )}
         </div>
       )}
@@ -370,7 +370,7 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
                   }`}
                 >
                   <span className="font-bold block">{d.name}</span>
-                  <span className="text-[10px] text-slate-400 uppercase">
+                  <span className="text-xs text-slate-400 uppercase">
                     {d.transport}
                     {d.address ? ` · ${d.address}` : ''}
                     {state === 'pending' ? ' · aguardando confirmar' : ''}
@@ -398,7 +398,7 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
             {config.deviceName || 'Bluetooth'}
             {config.bluetoothAddress ? ` · ${config.bluetoothAddress}` : ''}
           </p>
-          <p className="text-[11px] text-emerald-200/90">
+          <p className="text-sm text-emerald-200/90">
             Próximo passo: botão verde <strong>Imprimir cupom de teste</strong> no fim da tela.
           </p>
         </div>
@@ -426,7 +426,7 @@ export function PrinterSettingsPanel({ loja, config, onChange }: Props) {
       </button>
 
       {!native && (
-        <p className="text-[11px] text-slate-500 text-center">
+        <p className="text-sm text-slate-500 text-center">
           Bluetooth/USB/rede no tablet: gere e instale o APK (`docs/APK-PDV.md`).
         </p>
       )}

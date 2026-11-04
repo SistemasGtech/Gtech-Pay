@@ -1,6 +1,6 @@
 {
-  "versionCode": 17,
-  "versionName": "1.0.17",
-  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.17/app-debug.apk",
-  "notes": "Splash de abertura nítido (telas nativas + logo maior). Mesmo fundo #0f172a no ícone e na abertura."
+  "versionCode": 18,
+  "versionName": "1.0.18",
+  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.18/app-debug.apk",
+  "notes": "Novo ícone e splash Gtech Pay. Fontes e números maiores para leitura no tablet."
 }

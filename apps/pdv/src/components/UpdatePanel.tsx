@@ -97,7 +97,7 @@ export function UpdateSettingsPanel() {
         <p className="text-xs text-slate-400 leading-relaxed">
           Verifica uma versão nova na internet e instala o APK no tablet (sem Play Store).
         </p>
-        <p className="text-[10px] text-slate-500 break-all">Em uso: {getUpdateManifestUrl()}</p>
+        <p className="text-xs text-slate-500 break-all">Em uso: {getUpdateManifestUrl()}</p>
       </div>
 
       <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 space-y-2 text-sm">
@@ -122,7 +122,7 @@ export function UpdateSettingsPanel() {
       </div>
 
       <div className="bg-slate-900/80 border border-slate-700 rounded-2xl p-4 space-y-2">
-        <p className="text-[10px] font-black uppercase text-slate-400">URL do JSON (opcional)</p>
+        <p className="text-xs font-black uppercase text-slate-400">URL do JSON (opcional)</p>
         <input
           value={manifestUrlDraft}
           onChange={(e) => setManifestUrlDraft(e.target.value)}
@@ -143,12 +143,12 @@ export function UpdateSettingsPanel() {
               setSavedUpdateManifestUrl(null);
               setManifestUrlDraft(getUpdateManifestUrl());
             }}
-            className="px-3 py-2 rounded-xl border border-slate-600 text-[10px] font-bold"
+            className="px-3 py-2 rounded-xl border border-slate-600 text-xs font-bold"
           >
             Padrão
           </button>
         </div>
-        <p className="text-[10px] text-slate-500 leading-snug">
+        <p className="text-xs text-slate-500 leading-snug">
           Por padrão o app consulta o <strong className="text-slate-400">Supabase</strong> (mesma conexão do
           PDV). O link do GitHub Pages só funciona depois do deploy do dashboard. Use o campo acima só se quiser
           outro JSON público (URL direta).
@@ -158,7 +158,7 @@ export function UpdateSettingsPanel() {
       {msg && (
         <p className={`text-xs ${updateAvailable ? 'text-amber-400' : 'text-slate-300'}`}>{msg}</p>
       )}
-      {errorDetail && <p className="text-[11px] text-red-400/90 leading-snug">{errorDetail}</p>}
+      {errorDetail && <p className="text-sm text-red-400/90 leading-snug">{errorDetail}</p>}
 
       <div className="flex flex-col gap-2">
         <button
@@ -182,7 +182,7 @@ export function UpdateSettingsPanel() {
       </div>
 
       {!native && (
-        <p className="text-[11px] text-slate-500">
+        <p className="text-sm text-slate-500">
           Para testar instalação, abra esta aba no APK do tablet com internet.
         </p>
       )}

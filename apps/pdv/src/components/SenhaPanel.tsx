@@ -66,7 +66,7 @@ export function SenhaSettingsPanel({ config, onChange }: Props) {
 
       <div className={`space-y-4 ${!ativo ? 'opacity-40 pointer-events-none select-none' : ''}`}>
         <div className="bg-amber-400 text-slate-950 rounded-2xl p-4 shadow-lg">
-          <p className="text-[10px] font-black uppercase text-center text-slate-900/70">Próxima senha na venda</p>
+          <p className="text-xs font-black uppercase text-center text-slate-900/70">Próxima senha na venda</p>
           <div className="flex items-center justify-center gap-3 mt-3">
             <button
               type="button"
@@ -114,7 +114,7 @@ export function SenhaSettingsPanel({ config, onChange }: Props) {
 
         <div className="grid grid-cols-2 gap-3">
           <div className="min-w-0">
-            <label className="text-[10px] font-bold text-slate-400 uppercase">Mínimo</label>
+            <label className="text-xs font-bold text-slate-400 uppercase">Mínimo</label>
             <input
               type="number"
               min={1}
@@ -125,7 +125,7 @@ export function SenhaSettingsPanel({ config, onChange }: Props) {
             />
           </div>
           <div className="min-w-0">
-            <label className="text-[10px] font-bold text-slate-400 uppercase">Máximo</label>
+            <label className="text-xs font-bold text-slate-400 uppercase">Máximo</label>
             <input
               type="number"
               min={1}

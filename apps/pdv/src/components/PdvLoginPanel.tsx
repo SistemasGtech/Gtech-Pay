@@ -49,7 +49,7 @@ export function PdvLoginPanel({ onSuccess, error: externalError, loading: extern
         {message && <p className="text-red-400 text-xs text-center font-bold">{message}</p>}
 
         <label className="block space-y-1">
-          <span className="text-[10px] font-bold uppercase text-slate-500">E-mail</span>
+          <span className="text-xs font-bold uppercase text-slate-500">E-mail</span>
           <input
             type="email"
             autoComplete="username"
@@ -61,7 +61,7 @@ export function PdvLoginPanel({ onSuccess, error: externalError, loading: extern
         </label>
 
         <label className="block space-y-1">
-          <span className="text-[10px] font-bold uppercase text-slate-500">Senha</span>
+          <span className="text-xs font-bold uppercase text-slate-500">Senha</span>
           <div className="flex gap-2">
             <input
               type={showPassword ? 'text' : 'password'}
@@ -74,7 +74,7 @@ export function PdvLoginPanel({ onSuccess, error: externalError, loading: extern
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
-              className="px-3 rounded-xl border border-slate-700 text-[10px] font-bold"
+              className="px-3 rounded-xl border border-slate-700 text-xs font-bold"
             >
               {showPassword ? 'Ocultar' : 'Ver'}
             </button>
@@ -89,7 +89,7 @@ export function PdvLoginPanel({ onSuccess, error: externalError, loading: extern
           {busy ? 'Entrando…' : 'Entrar no PDV'}
         </button>
 
-        <p className="text-[10px] text-center text-slate-500 leading-snug">
+        <p className="text-xs text-center text-slate-500 leading-snug">
           A sessão fica salva neste tablet. Toque em <strong className="text-slate-400">Sair</strong> para trocar de
           conta.
         </p>
