@@ -1,6 +1,6 @@
 {
-  "versionCode": 13,
-  "versionName": "1.0.13",
-  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.13/app-debug.apk",
-  "notes": "PDV retrato: pedido no topo e Cobrar. Complementos: múltipla escolha e sem pré-seleção."
+  "versionCode": 14,
+  "versionName": "1.0.14",
+  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.14/app-debug.apk",
+  "notes": "Complementos opcionais no pedido. Removido campo cliente. Ajustes no cupom e no dashboard."
 }

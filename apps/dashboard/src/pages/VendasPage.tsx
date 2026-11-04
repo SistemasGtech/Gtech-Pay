@@ -25,7 +25,7 @@ export function VendasPage({ vendas, onChange, onDelete }: Props) {
   const filtradas = vendas.filter((v) => {
     if (!busca.trim()) return true;
     const t = busca.toLowerCase();
-    return v.senha.includes(t) || v.cliente.toLowerCase().includes(t) || v.operadorNome?.toLowerCase().includes(t);
+    return v.senha.includes(t) || v.operadorNome?.toLowerCase().includes(t);
   });
 
   const vendasParaRelatorio = useMemo(() => {
@@ -135,7 +135,7 @@ export function VendasPage({ vendas, onChange, onDelete }: Props) {
         <input
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar senha, cliente ou operador..."
+          placeholder="Buscar senha ou operador..."
           className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm"
         />
         <div className="overflow-x-auto rounded-2xl border border-slate-800">
@@ -145,7 +145,6 @@ export function VendasPage({ vendas, onChange, onDelete }: Props) {
                 <th className="p-3">Senha</th>
                 <th className="p-3">Data</th>
                 <th className="p-3">Itens</th>
-                <th className="p-3">Cliente</th>
                 <th className="p-3">Operador</th>
                 <th className="p-3">Pagamento</th>
                 <th className="p-3">Total</th>
@@ -155,7 +154,7 @@ export function VendasPage({ vendas, onChange, onDelete }: Props) {
             <tbody className="divide-y divide-slate-800">
               {filtradas.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-slate-500">
+                  <td colSpan={7} className="p-6 text-center text-slate-500">
                     Nenhuma venda encontrada.
                   </td>
                 </tr>
@@ -169,7 +168,6 @@ export function VendasPage({ vendas, onChange, onDelete }: Props) {
                         {v.data} {v.hora}
                       </td>
                       <td className="p-3 font-mono text-slate-300">{qtd}</td>
-                      <td className="p-3">{v.cliente}</td>
                       <td className="p-3 text-slate-400">{v.operadorNome || '—'}</td>
                       <td className="p-3">{v.pagamento}</td>
                       <td className="p-3 font-mono text-emerald-400">R$ {v.total.toFixed(2)}</td>

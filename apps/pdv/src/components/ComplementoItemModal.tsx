@@ -51,14 +51,7 @@ export function ComplementoItemModal({ produto, complementos, onClose, onConfirm
   };
 
   const confirmar = () => {
-    for (const g of grupos) {
-      const tem = g.opcoes.some((o) => opcoesIds.includes(String(o.id)));
-      if (!tem) {
-        setErro(`Selecione ao menos uma opção em "${g.nome}".`);
-        return;
-      }
-    }
-
+    setErro('');
     const opcoes: ItemCarrinho['opcoes'] = [];
     for (const opcId of opcoesIds) {
       for (const g of grupos) {
@@ -108,7 +101,7 @@ export function ComplementoItemModal({ produto, complementos, onClose, onConfirm
             <div key={grupo.id} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-2">
               <p className="text-[10px] font-black uppercase text-slate-400 border-b border-slate-800 pb-2">
                 {grupo.nome}
-                <span className="normal-case font-bold text-slate-600 ml-1">· várias opções</span>
+                <span className="normal-case font-bold text-slate-600 ml-1">· opcional · várias</span>
               </p>
               <div className="space-y-1.5">
                 {grupo.opcoes.map((opc) => {

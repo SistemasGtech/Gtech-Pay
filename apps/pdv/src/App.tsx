@@ -96,7 +96,6 @@ function App() {
   const [busca, setBusca] = useState('');
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [pedidoAberto, setPedidoAberto] = useState(false);
-  const [cliente, setCliente] = useState('');
   const [pagamento, setPagamento] = useState<FormaPagamento>('PIX');
   const [valorRecebido, setValorRecebido] = useState('');
   const [vendas, setVendas] = useState<Venda[]>(() => loadVendas());
@@ -387,7 +386,7 @@ function App() {
       timestamp: Date.now(),
       senha,
       comanda: senha,
-      cliente: cliente.trim() || 'Cliente Balcão',
+      cliente: 'Cliente Balcão',
       data: agora.toLocaleDateString('pt-BR'),
       hora: agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
       pagamento,
@@ -418,7 +417,6 @@ function App() {
 
     setUltimaVenda(venda);
     setCarrinho([]);
-    setCliente('');
     setValorRecebido('');
     setPagamento('PIX');
     setEtapaVenda('pedido');
@@ -787,7 +785,6 @@ function App() {
                     <span className="text-xs text-slate-400 ml-2">
                       {v.data} {v.hora}
                     </span>
-                    <p className="text-sm font-bold">{v.cliente}</p>
                   </div>
                   <div className="flex gap-2">
                     <span className="font-mono text-emerald-400 font-bold">R$ {v.total.toFixed(2)}</span>
@@ -876,12 +873,6 @@ function App() {
                     </div>
                   </div>
                 )}
-                <input
-                  value={cliente}
-                  onChange={(e) => setCliente(e.target.value)}
-                  placeholder="Cliente (opcional)"
-                  className="w-full bg-slate-950 border-b border-slate-800 px-3 py-2.5 text-xs"
-                />
                 {carrinho.length === 0 ? (
                   <p className="p-4 text-center text-xs text-slate-500">Nenhum item no pedido</p>
                 ) : (
@@ -996,13 +987,6 @@ function App() {
               </div>
             )}
 
-            <input
-              value={cliente}
-              onChange={(e) => setCliente(e.target.value)}
-              placeholder="Cliente (opcional)"
-              className="m-2 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs shrink-0"
-            />
-
             <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scroll min-h-0">
               {carrinho.map((item) => (
                 <div key={item.carrinhoItemId} className="p-2 bg-slate-800 rounded-xl border border-slate-700 text-xs">
@@ -1065,12 +1049,6 @@ function App() {
                 {controleSenhaAtivo && (
                   <>
                     Senha <span className="font-mono font-black text-amber-400">#{senhaAtual}</span>
-                  </>
-                )}
-                {cliente.trim() && (
-                  <>
-                    {controleSenhaAtivo ? ' · ' : ''}
-                    {cliente.trim()}
                   </>
                 )}
               </p>

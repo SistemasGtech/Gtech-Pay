@@ -334,7 +334,6 @@ function htmlViaProducao(venda: Venda, loja: LojaInfo): string {
       <div style="font-weight:900;font-size:14px;">${loja.nome}</div>
       <div style="font-size:11px;">${venda.data} · ${venda.hora}</div>
       ${senhaBlock}
-      <div style="font-weight:900;text-align:left;font-size:12px;margin:6px 0;">CLIENTE: ${venda.cliente}</div>
       <div style="border-top:2px dashed #000;margin:6px 0;"></div>
       ${itensHtml}
       <div style="border-top:2px dashed #000;margin:6px 0;"></div>

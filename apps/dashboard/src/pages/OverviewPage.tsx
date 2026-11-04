@@ -44,7 +44,7 @@ export function OverviewPage({ vendas }: { vendas: Venda[] }) {
                 <li key={v.id} className="py-2 flex justify-between text-sm gap-2">
                   <span>
                     <span className="font-mono font-bold text-amber-400 mr-2">#{v.senha}</span>
-                    {v.cliente} • {v.hora}
+                    {v.hora}
                     <span className="text-slate-500 ml-1">({qtd} it.)</span>
                   </span>
                   <span className="font-mono text-emerald-400 shrink-0">R$ {v.total.toFixed(2)}</span>

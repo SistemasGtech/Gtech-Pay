@@ -112,7 +112,6 @@ function buildViaProducao(venda: Venda, loja: LojaInfo, chars: number): Uint8Arr
 
   parts.push(
     cmdAlign('left'),
-    cmdTextLine(`CLIENTE: ${venda.cliente}`),
     cmdTextLine('-'.repeat(chars)),
   );
 
