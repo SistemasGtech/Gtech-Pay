@@ -1,6 +1,6 @@
 {
-  "versionCode": 20,
-  "versionName": "1.0.20",
-  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.20/app-debug.apk",
-  "notes": "Recibos: editar e excluir venda, salvar e reimprimir. Confirmações legíveis no app. Painel impressora com botões visíveis."
+  "versionCode": 21,
+  "versionName": "1.0.21",
+  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.21/app-debug.apk",
+  "notes": "Aba Resumo: faturamento do dia com PIN, totais por categoria, bloqueio após inatividade. Teclado PIN mais confortável."
 }

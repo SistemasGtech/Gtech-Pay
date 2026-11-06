@@ -31,6 +31,7 @@ import { ComplementoItemModal, gruposComplementoDoProduto } from './components/C
 import { EditVendaModal } from './components/EditVendaModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { BootSplash } from './components/BootSplash';
+import { VendasResumoPanel } from './components/VendasResumoPanel';
 import { PdvLoginPanel } from './components/PdvLoginPanel';
 import {
   getPdvAuthSession,
@@ -75,10 +76,11 @@ import {
   removePendingSale,
 } from './lib/offlineStore';
 import { syncPendingSales } from './lib/syncSales';
+import { clearResumoUnlockSession } from './lib/pdvFaturamentoPin';
 import { imprimirVenda } from './services/printService';
 import { categoriaChipStyle, normalizeCategoriaCor, produtoCategoriaStyle } from './lib/categoriaUi';
 
-type Tab = 'vendas' | 'recibos' | 'senha' | 'impressora' | 'atualizar';
+type Tab = 'vendas' | 'resumo' | 'recibos' | 'senha' | 'impressora' | 'atualizar';
 type EtapaVenda = 'pedido' | 'pagamento';
 
 type ItemModalState = {
@@ -303,6 +305,7 @@ function App() {
       const session = await getPdvAuthSession();
       if (!session?.user) {
         setNeedsAuthLogin(true);
+        clearResumoUnlockSession();
         setUsuario(null);
         return;
       }
@@ -402,7 +405,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (tab !== 'recibos' || !isPdvCloudEnabled || !storeId || !isOnline()) return;
+    if ((tab !== 'recibos' && tab !== 'resumo') || !isPdvCloudEnabled || !storeId || !isOnline()) return;
     void refreshVendasFromCloud(storeId);
   }, [tab, storeId, refreshVendasFromCloud]);
 
@@ -632,6 +635,7 @@ function App() {
       notify('PIN salvo — próxima vez entra direto neste tablet');
     }
     setUsuario(op);
+    clearResumoUnlockSession();
     setPinOp(null);
     setPin('');
     setErroLogin('');
@@ -667,6 +671,7 @@ function App() {
     }
     if (pinOp.pin === pinCode) {
       if (saveForTablet) notify('PIN salvo neste tablet');
+      clearResumoUnlockSession();
       setUsuario(pinOp);
       setPinOp(null);
       setPin('');
@@ -748,6 +753,7 @@ function App() {
               void signOutPdv();
               setNeedsAuthLogin(true);
               setBootError('');
+              clearResumoUnlockSession();
               setUsuario(null);
             }}
             className="px-4 py-2 bg-slate-800 rounded-xl text-xs font-bold"
@@ -890,6 +896,7 @@ function App() {
           {(
             [
               ['vendas', 'Vendas'],
+              ['resumo', 'Resumo'],
               ['recibos', 'Recibos'],
               ['senha', 'Senha'],
               ['impressora', 'Impressora'],
@@ -915,6 +922,7 @@ function App() {
             onClick={() => {
               setEtapaVenda('pedido');
               clearPdvSession();
+              clearResumoUnlockSession();
               setUsuario(null);
               if (isPdvCloudEnabled) {
                 void signOutPdv();
@@ -978,6 +986,12 @@ function App() {
       {tab === 'atualizar' && (
         <div className="flex-1 min-h-0 overflow-y-auto custom-scroll">
           <UpdateSettingsPanel />
+        </div>
+      )}
+
+      {tab === 'resumo' && (
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <VendasResumoPanel vendas={vendas} produtos={produtos} categorias={categorias} />
         </div>
       )}
 
