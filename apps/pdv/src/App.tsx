@@ -509,19 +509,24 @@ function App() {
       operadorNome: usuario.nome,
     };
 
+    const senhaPosVenda = advanceSenhaAfterSale(applyDailyReset(senhaConfig));
+
     if (isPdvCloudEnabled && storeId) {
       addPendingSale(venda);
       setVendas(syncVendasDisplayFromServer(serverVendasRef.current));
       setPendingCount(countPendingSales());
-      if (getNetworkConnected()) {
-        const result = await syncPendingSales(
-          storeId,
-          advanceSenhaAfterSale(applyDailyReset(senhaConfig)),
-        );
-        setPendingCount(result.remaining);
-        await refreshVendasFromCloud(storeId);
-      } else {
+      if (!getNetworkConnected()) {
         notify('Venda salva offline. Envia quando a internet voltar.');
+      } else {
+        // Nuvem em segundo plano — cupom não espera Supabase (evita atraso após inatividade).
+        void syncPendingSales(storeId, senhaPosVenda)
+          .then(async (result) => {
+            setPendingCount(result.remaining);
+            await refreshVendasFromCloud(storeId);
+          })
+          .catch(() => {
+            setCloudReachable(false);
+          });
       }
     } else {
       setVendas(persistVenda(venda));
