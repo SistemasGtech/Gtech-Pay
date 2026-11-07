@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Categoria, Complemento, LojaInfo, Produto, Venda } from '@gtech/shared';
 import {
   deleteVenda,
@@ -33,6 +33,9 @@ import { UsuariosPage } from './pages/UsuariosPage';
 
 type Nav = 'overview' | 'usuarios' | 'categorias' | 'complementos' | 'produtos' | 'vendas' | 'loja';
 
+/** Intervalo de sincronização com a nuvem / localStorage (vendas do PDV). */
+const AUTO_SYNC_MS = 30_000;
+
 const NAV: { id: Nav; label: string }[] = [
   { id: 'overview', label: 'Visão geral' },
   { id: 'usuarios', label: 'Usuários' },
@@ -55,6 +58,8 @@ function App() {
   const [complementos, setComplementos] = useState<Complemento[]>(() => loadComplementos());
   const [produtos, setProdutos] = useState<Produto[]>(() => loadProdutos());
   const [vendas, setVendas] = useState<Venda[]>(() => loadVendas());
+  const [ultimaSync, setUltimaSync] = useState<Date | null>(null);
+  const syncEmAndamento = useRef(false);
 
   const notify = (msg: string) => {
     setToast(msg);
@@ -89,19 +94,45 @@ function App() {
         if (session) {
           setAuthed(true);
           await loadAll();
+          setUltimaSync(new Date());
         }
       })
       .finally(() => setBooting(false));
   }, [loadAll]);
 
-  const refreshVendas = useCallback(async () => {
-    if (isSupabaseEnabled) {
-      const d = await fetchDashboardData();
-      setVendas(d.vendas);
-    } else {
-      setVendas(loadVendas());
+  const syncSilently = useCallback(async () => {
+    if (!authed || syncEmAndamento.current) return;
+    syncEmAndamento.current = true;
+    try {
+      await loadAll();
+      setUltimaSync(new Date());
+    } catch {
+      /* falha pontual — próximo ciclo tenta de novo */
+    } finally {
+      syncEmAndamento.current = false;
     }
-  }, []);
+  }, [authed, loadAll]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const id = window.setInterval(() => {
+      void syncSilently();
+    }, AUTO_SYNC_MS);
+    return () => window.clearInterval(id);
+  }, [authed, syncSilently]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void syncSilently();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [authed, syncSilently]);
+
+  const refreshVendas = useCallback(async () => {
+    await syncSilently();
+  }, [syncSilently]);
 
   const persist = async (label: string, local: () => void, remote?: () => Promise<void>) => {
     local();
@@ -130,6 +161,7 @@ function App() {
           setAuthed(true);
           try {
             await loadAll();
+            setUltimaSync(new Date());
           } catch (e) {
             notify(traduzirErro(e instanceof Error ? e.message : 'Erro ao carregar dados'));
           }
@@ -150,6 +182,11 @@ function App() {
         <div className="p-4 border-b border-slate-800">
           <p className="text-[10px] font-black text-indigo-400 uppercase">Painel Gtech Pay</p>
           <p className="text-xs text-slate-400 truncate">{loja.nome}</p>
+          <p className="text-[10px] text-slate-600 mt-2" title="Catálogo e vendas atualizam automaticamente a cada 30s">
+            {ultimaSync
+              ? `Sync ${ultimaSync.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+              : 'Sincronizando…'}
+          </p>
         </div>
         <nav className="flex-1 p-2 space-y-0.5">
           {NAV.map((item) => (
