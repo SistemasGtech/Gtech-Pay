@@ -126,6 +126,8 @@ function buildViaProducao(venda: Venda, loja: LojaInfo, chars: number): Uint8Arr
       parts.push(cmdTextLine(`  * ${o.nome}${extra}`));
     }
     if (it.observacao) parts.push(cmdBold(true), cmdTextLine(`OBS: ${it.observacao}`), cmdBold(false));
+    // Linha vazia entre itens — separa pedidos na cozinha/produção
+    parts.push(cmdTextLine(''));
   }
 
   const qtd = venda.itens.reduce((s, i) => s + i.quantidade, 0);

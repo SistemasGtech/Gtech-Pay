@@ -119,3 +119,65 @@ export function relatorioItensVendidos(vendas: Venda[]): ItemVendidoResumo[] {
 
   return [...map.values()].sort((a, b) => b.quantidade - a.quantidade || b.faturamento - a.faturamento);
 }
+
+function chaveSaborComplemento(nome: string): string {
+  return nome.trim().toLowerCase();
+}
+
+function quantidadeComplementosPorSabor(vendas: Venda[]): Map<string, { nome: string; quantidade: number }> {
+  const map = new Map<string, { nome: string; quantidade: number }>();
+
+  for (const venda of vendas) {
+    for (const it of venda.itens || []) {
+      const qtdItem = it.quantidade || 1;
+      for (const op of it.opcoes || []) {
+        const label = (op.nome || '').trim();
+        if (!label) continue;
+        const chave = chaveSaborComplemento(label);
+        const prev = map.get(chave);
+        if (prev) {
+          prev.quantidade += qtdItem;
+        } else {
+          map.set(chave, { nome: label, quantidade: qtdItem });
+        }
+      }
+    }
+  }
+
+  return map;
+}
+
+export interface ComplementoSaborMesAno {
+  chave: string;
+  nome: string;
+  quantidadeMes: number;
+  quantidadeAno: number;
+}
+
+/** Mesmo sabor (nome) em uma linha, com totais do mês e do ano de referência */
+export function relatorioComplementosSaboresMesAno(vendas: Venda[], dataRef = new Date()): ComplementoSaborMesAno[] {
+  const mesMap = quantidadeComplementosPorSabor(vendasDoMes(vendas, dataRef));
+  const anoMap = quantidadeComplementosPorSabor(vendasDoAno(vendas, dataRef));
+  const chaves = new Set([...mesMap.keys(), ...anoMap.keys()]);
+
+  const rows: ComplementoSaborMesAno[] = [];
+  for (const chave of chaves) {
+    const mes = mesMap.get(chave);
+    const ano = anoMap.get(chave);
+    rows.push({
+      chave,
+      nome: mes?.nome ?? ano?.nome ?? chave,
+      quantidadeMes: mes?.quantidade ?? 0,
+      quantidadeAno: ano?.quantidade ?? 0,
+    });
+  }
+
+  return rows
+    .filter((r) => r.quantidadeMes > 0 || r.quantidadeAno > 0)
+    .sort(
+      (a, b) =>
+        b.quantidadeMes - a.quantidadeMes ||
+        b.quantidadeAno - a.quantidadeAno ||
+        a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }),
+    );
+}

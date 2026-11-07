@@ -47,8 +47,8 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     supabase.from('stores').select('*').eq('id', storeId).single(),
     supabase.from('operadores').select('*').eq('store_id', storeId),
     supabase.from('categorias').select('*').eq('store_id', storeId),
-    supabase.from('complementos').select('*').eq('store_id', storeId),
-    supabase.from('complemento_opcoes').select('*'),
+    supabase.from('complementos').select('*').eq('store_id', storeId).order('sort_order').order('id'),
+    supabase.from('complemento_opcoes').select('*').order('sort_order').order('id'),
     supabase.from('produtos').select('*').eq('store_id', storeId),
     supabase.from('produto_complementos').select('*'),
     supabase.from('vendas').select('*').eq('store_id', storeId).order('vendido_em', { ascending: false }),
@@ -235,21 +235,23 @@ export async function saveComplementosRemote(storeId: string, list: Complemento[
     await supabase.from('complemento_opcoes').delete().in('complemento_id', deleteIds);
     await supabase.from('complementos').delete().in('id', deleteIds);
   }
-  for (const g of list) {
+  for (const [gi, g] of list.entries()) {
     const { error: gErr } = await supabase.from('complementos').upsert({
       id: g.id,
       store_id: storeId,
       nome: g.nome,
+      sort_order: gi,
     });
     if (gErr) throw gErr;
     await supabase.from('complemento_opcoes').delete().eq('complemento_id', g.id);
     if (g.opcoes.length) {
       const { error: oErr } = await supabase.from('complemento_opcoes').insert(
-        g.opcoes.map((o) => ({
+        g.opcoes.map((o, oi) => ({
           id: o.id,
           complemento_id: g.id,
           nome: o.nome,
           preco: o.preco,
+          sort_order: oi,
         }))
       );
       if (oErr) throw oErr;
