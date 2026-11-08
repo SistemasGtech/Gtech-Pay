@@ -1,6 +1,6 @@
 {
-  "versionCode": 25,
-  "versionName": "1.0.25",
-  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.25/app-debug.apk",
-  "notes": "Cupom: complementos imprimem so o nome da opcao, sem repetir o grupo (ex. Sabores Sorvete)."
+  "versionCode": 26,
+  "versionName": "1.0.26",
+  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.26/app-debug.apk",
+  "notes": "Complementos: permite escolher varias opcoes no mesmo grupo; carrinho e cupom listam todas."
 }

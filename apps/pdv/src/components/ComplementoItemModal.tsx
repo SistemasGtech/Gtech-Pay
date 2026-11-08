@@ -117,16 +117,12 @@ export function ComplementoItemModal({
     return Number(produto.preco) + extra;
   }, [produto.preco, opcoesIds, grupos]);
 
-  const selecionarOpcao = (grupoId: string, opcaoId: string) => {
+  const selecionarOpcao = (opcaoId: string) => {
     setErro('');
     const id = String(opcaoId);
-    const grupo = grupos.find((g) => String(g.id) === String(grupoId));
-    const idsDoGrupo = new Set((grupo?.opcoes ?? []).map((o) => String(o.id)));
     setOpcoesIds((prev) => {
-      const ativo = prev.includes(id);
-      const semEsteGrupo = prev.filter((x) => !idsDoGrupo.has(x));
-      if (ativo) return semEsteGrupo;
-      return [...semEsteGrupo, id];
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      return [...prev, id];
     });
   };
 
@@ -196,7 +192,7 @@ export function ComplementoItemModal({
               >
                 {grupo.nome}
                 <span className={`normal-case font-bold ml-1 opacity-70 ${theme.title}`}>
-                  · opcional
+                  · opcional · várias
                 </span>
               </p>
               <div className="space-y-1.5">
@@ -205,7 +201,7 @@ export function ComplementoItemModal({
                   return (
                     <OpcaoComplementoButton
                       key={opc.id}
-                      onActivate={() => selecionarOpcao(String(grupo.id), String(opc.id))}
+                      onActivate={() => selecionarOpcao(String(opc.id))}
                       className={`w-full flex items-center justify-between p-3 rounded-xl border text-sm font-bold transition-colors ${
                         sel
                           ? 'border-indigo-500 bg-indigo-600 text-white'
