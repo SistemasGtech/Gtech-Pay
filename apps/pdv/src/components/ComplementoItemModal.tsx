@@ -1,6 +1,62 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Complemento, ItemCarrinho, Produto } from '@gtech/shared';
 import { complementoGrupoTheme } from '../lib/categoriaUi';
+
+/** Distância (px) acima da qual o toque vira rolagem e não alterna a opção. */
+const TAP_MOVE_PX = 12;
+
+function OpcaoComplementoButton({
+  onActivate,
+  className,
+  children,
+}: {
+  onActivate: () => void;
+  className: string;
+  children: ReactNode;
+}) {
+  const startRef = useRef<{ x: number; y: number } | null>(null);
+  const movedRef = useRef(false);
+
+  return (
+    <button
+      type="button"
+      className={className}
+      style={{ touchAction: 'manipulation' }}
+      onPointerDown={(e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        startRef.current = { x: e.clientX, y: e.clientY };
+        movedRef.current = false;
+      }}
+      onPointerMove={(e) => {
+        if (!startRef.current) return;
+        const dx = Math.abs(e.clientX - startRef.current.x);
+        const dy = Math.abs(e.clientY - startRef.current.y);
+        if (dx > TAP_MOVE_PX || dy > TAP_MOVE_PX) movedRef.current = true;
+      }}
+      onPointerUp={(e) => {
+        if (!startRef.current) return;
+        if (e.pointerType === 'mouse' && e.button !== 0) {
+          startRef.current = null;
+          movedRef.current = false;
+          return;
+        }
+        const dx = Math.abs(e.clientX - startRef.current.x);
+        const dy = Math.abs(e.clientY - startRef.current.y);
+        const moved = movedRef.current || dx > TAP_MOVE_PX || dy > TAP_MOVE_PX;
+        startRef.current = null;
+        movedRef.current = false;
+        if (moved) return;
+        onActivate();
+      }}
+      onPointerCancel={() => {
+        startRef.current = null;
+        movedRef.current = false;
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 type Props = {
   produto: Produto;
@@ -47,7 +103,8 @@ export function ComplementoItemModal({
       setObservacao('');
     }
     setErro('');
-  }, [produto.id, grupos, initialItem?.carrinhoItemId]);
+    // Não incluir `grupos`: atualização do catálogo (sync) recriava o array e limpava a seleção.
+  }, [produto.id, initialItem?.carrinhoItemId]);
 
   const precoUnitario = useMemo(() => {
     let extra = 0;
@@ -60,10 +117,17 @@ export function ComplementoItemModal({
     return Number(produto.preco) + extra;
   }, [produto.preco, opcoesIds, grupos]);
 
-  const selecionarOpcao = (_grupoId: string, opcaoId: string) => {
+  const selecionarOpcao = (grupoId: string, opcaoId: string) => {
     setErro('');
     const id = String(opcaoId);
-    setOpcoesIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    const grupo = grupos.find((g) => String(g.id) === String(grupoId));
+    const idsDoGrupo = new Set((grupo?.opcoes ?? []).map((o) => String(o.id)));
+    setOpcoesIds((prev) => {
+      const ativo = prev.includes(id);
+      const semEsteGrupo = prev.filter((x) => !idsDoGrupo.has(x));
+      if (ativo) return semEsteGrupo;
+      return [...semEsteGrupo, id];
+    });
   };
 
   const confirmar = () => {
@@ -73,7 +137,11 @@ export function ComplementoItemModal({
       for (const g of grupos) {
         const opc = g.opcoes.find((o) => String(o.id) === String(opcId));
         if (opc) {
-          opcoes.push({ id: String(opc.id), nome: opc.nome, preco: Number(opc.preco || 0) });
+          opcoes.push({
+            id: String(opc.id),
+            nome: `${g.nome} – ${opc.nome}`,
+            preco: Number(opc.preco || 0),
+          });
         }
       }
     }
@@ -115,7 +183,7 @@ export function ComplementoItemModal({
           </p>
         )}
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scroll">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4 custom-scroll">
           {grupos.map((grupo, grupoIndex) => {
             const theme = complementoGrupoTheme(grupoIndex);
             return (
@@ -128,17 +196,16 @@ export function ComplementoItemModal({
               >
                 {grupo.nome}
                 <span className={`normal-case font-bold ml-1 opacity-70 ${theme.title}`}>
-                  · opcional · várias
+                  · opcional
                 </span>
               </p>
               <div className="space-y-1.5">
                 {grupo.opcoes.map((opc) => {
                   const sel = opcoesIds.includes(String(opc.id));
                   return (
-                    <button
+                    <OpcaoComplementoButton
                       key={opc.id}
-                      type="button"
-                      onClick={() => selecionarOpcao(String(grupo.id), String(opc.id))}
+                      onActivate={() => selecionarOpcao(String(grupo.id), String(opc.id))}
                       className={`w-full flex items-center justify-between p-3 rounded-xl border text-sm font-bold transition-colors ${
                         sel
                           ? 'border-indigo-500 bg-indigo-600 text-white'
@@ -149,7 +216,7 @@ export function ComplementoItemModal({
                       <span className="font-mono">
                         {opc.preco > 0 ? `+ R$ ${Number(opc.preco).toFixed(2)}` : 'Grátis'}
                       </span>
-                    </button>
+                    </OpcaoComplementoButton>
                   );
                 })}
               </div>

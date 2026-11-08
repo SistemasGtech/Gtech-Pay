@@ -1,6 +1,6 @@
 {
-  "versionCode": 23,
-  "versionName": "1.0.23",
-  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.23/app-debug.apk",
-  "notes": "Finalizar venda: cupom imprime antes da sincronizacao com a nuvem (menos espera na operacao). Espacamento entre itens no cupom."
+  "versionCode": 24,
+  "versionName": "1.0.24",
+  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.24/app-debug.apk",
+  "notes": "Complementos: nao desmarca ao rolar nem no sync; cupom lista as opcoes escolhidas. Catalogo nao atualiza com modal aberto."
 }

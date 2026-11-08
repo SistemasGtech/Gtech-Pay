@@ -105,7 +105,9 @@ function App() {
     isPdvCloudEnabled ? [] : loadComplementos(),
   );
   const [loja, setLoja] = useState<LojaInfo>(loadLoja);
+  const itemModalAbertoRef = useRef(false);
   const [itemModal, setItemModal] = useState<ItemModalState | null>(null);
+  itemModalAbertoRef.current = itemModal !== null;
   const [vendaEditando, setVendaEditando] = useState<Venda | null>(null);
   const [vendaExcluir, setVendaExcluir] = useState<Venda | null>(null);
 
@@ -183,9 +185,11 @@ function App() {
     (data: Awaited<ReturnType<typeof fetchPdvBootstrap>>, sid: string) => {
       setLoja(data.loja);
       setOperadores(data.operadores);
-      setCategorias(data.categorias);
-      setComplementos(data.complementos);
-      setProdutos(data.produtos);
+      if (!itemModalAbertoRef.current) {
+        setCategorias(data.categorias);
+        setComplementos(data.complementos);
+        setProdutos(data.produtos);
+      }
       setSenhaConfig(data.senhaConfig);
       saveSenhaConfig(data.senhaConfig);
       serverVendasRef.current = data.vendas;
