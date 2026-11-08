@@ -234,8 +234,21 @@ function App() {
             : `${result.synced} venda(s) sincronizada(s)!`,
         );
       } else if (result.failed > 0 && !silent) {
-        notify(result.lastError ?? 'Falha ao sincronizar');
-        setCloudReachable(false);
+        const errMsg = result.lastError ?? 'Falha ao sincronizar';
+        notify(errMsg);
+        const low = errMsg.toLowerCase();
+        if (
+          low.includes('login') ||
+          low.includes('jwt') ||
+          low.includes('sessão') ||
+          low.includes('session') ||
+          low.includes('permissão')
+        ) {
+          setCloudReachable(false);
+          if (low.includes('login') || low.includes('jwt') || low.includes('faça login')) {
+            setNeedsAuthLogin(true);
+          }
+        }
       }
       if (result.synced > 0) setCloudReachable(true);
       await refreshVendasFromCloud(effectiveStoreId);
@@ -509,7 +522,8 @@ function App() {
       troco: trocoVenda,
       itens: [...carrinho],
       total,
-      operadorId: isPdvCloudEnabled ? '' : usuario.id,
+      operadorId:
+        isPdvCloudEnabled && operadores.some((o) => o.id === usuario.id) ? usuario.id : '',
       operadorNome: usuario.nome,
     };
 

@@ -26,6 +26,28 @@ export const supabase: SupabaseClient | null = isPdvCloudEnabled
 const UUID_IN_TEXT =
   /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
 
+const UUID_STRICT =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function asUuidOrNull(raw: string | null | undefined): string | null {
+  const id = String(raw ?? '').trim();
+  return UUID_STRICT.test(id) ? id.toLowerCase() : null;
+}
+
+/** Renova JWT antes de gravar vendas (evita erro com “Online” e sessão expirada). */
+export async function ensurePdvAuthSession(): Promise<void> {
+  if (!supabase) return;
+  const { data } = await supabase.auth.getSession();
+  if (!data.session) {
+    throw new Error('Faça login no PDV com e-mail e senha do dashboard');
+  }
+  const expMs = (data.session.expires_at ?? 0) * 1000;
+  if (expMs < Date.now() + 120_000) {
+    const { error } = await supabase.auth.refreshSession();
+    if (error) throw error;
+  }
+}
+
 /** Extrai e normaliza UUID (aceita colar com espaços ou texto extra). */
 export function normalizeStoreId(raw: string): string | null {
   const trimmed = raw.trim().replace(/^\{|\}$/g, '');
@@ -220,6 +242,7 @@ export async function verifyOperadorPin(
 
 export async function registerSaleRemote(storeId: string, venda: Venda): Promise<string> {
   if (!supabase) throw new Error('Supabase não configurado');
+  await ensurePdvAuthSession();
   const { data, error } = await supabase.rpc('pdv_register_sale', {
     p_store_id: storeId,
     p_venda: salePayload(venda),
@@ -229,8 +252,9 @@ export async function registerSaleRemote(storeId: string, venda: Venda): Promise
 }
 
 function salePayload(venda: Venda) {
+  const vendaId = asUuidOrNull(venda.id) ?? crypto.randomUUID();
   return {
-    id: venda.id,
+    id: vendaId,
     senha: venda.senha,
     comanda: venda.comanda,
     cliente: venda.cliente,
@@ -240,19 +264,25 @@ function salePayload(venda: Venda) {
     total: venda.total,
     troco: venda.troco,
     valorRecebido: venda.valorRecebido,
-    operadorId: venda.operadorId,
+    operadorId: asUuidOrNull(venda.operadorId) ?? '',
     operadorNome: venda.operadorNome,
     timestamp: venda.timestamp,
     itens: venda.itens.map((i) => ({
-      carrinhoItemId: i.carrinhoItemId,
-      produtoId: i.produtoId || null,
+      carrinhoItemId: asUuidOrNull(i.carrinhoItemId) ?? crypto.randomUUID(),
+      produtoId: asUuidOrNull(i.produtoId),
       nome: i.nome,
       precoBase: i.precoBase,
       precoUnitario: i.precoUnitario,
       quantidade: i.quantidade,
       subtotal: i.subtotal,
-      observacao: i.observacao,
-      opcoes: i.opcoes,
+      observacao: i.observacao ?? '',
+      opcoes: Array.isArray(i.opcoes)
+        ? i.opcoes.map((o) => ({
+            id: String(o.id ?? ''),
+            nome: String(o.nome ?? ''),
+            preco: Number(o.preco ?? 0),
+          }))
+        : [],
     })),
   };
 }

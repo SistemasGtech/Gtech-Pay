@@ -1,6 +1,18 @@
 import type { SenhaConfig } from '@gtech/shared';
-import { registerSaleRemote, syncSenhaConfigRemote } from './pdvApi';
+import { ensurePdvAuthSession, formatPdvError, registerSaleRemote, syncSenhaConfigRemote } from './pdvApi';
 import { isOnline, loadPendingSales, removePendingSale } from './offlineStore';
+
+function isSaleAlreadyOnServerError(e: unknown): boolean {
+  const msg = formatPdvError(e).toLowerCase();
+  const code =
+    e && typeof e === 'object' && 'code' in e ? String((e as { code: string }).code) : '';
+  return (
+    code === '23505' ||
+    msg.includes('duplicate key') ||
+    msg.includes('vendas_pkey') ||
+    msg.includes('already exists')
+  );
+}
 
 export interface SyncResult {
   synced: number;
@@ -23,6 +35,17 @@ export async function syncPendingSales(
   }
 
   const pending = [...loadPendingSales()].sort((a, b) => a.timestamp - b.timestamp);
+
+  try {
+    await ensurePdvAuthSession();
+  } catch (e) {
+    return {
+      synced: 0,
+      failed: pending.length,
+      remaining: pending.length,
+      lastError: formatPdvError(e),
+    };
+  }
   let synced = 0;
   let failed = 0;
   let lastError: string | undefined;
@@ -33,8 +56,13 @@ export async function syncPendingSales(
       removePendingSale(venda.id);
       synced++;
     } catch (e) {
+      if (isSaleAlreadyOnServerError(e)) {
+        removePendingSale(venda.id);
+        synced++;
+        continue;
+      }
       failed++;
-      lastError = e instanceof Error ? e.message : 'Erro ao enviar venda';
+      lastError = formatPdvError(e);
     }
   }
 
