@@ -1,6 +1,6 @@
 {
-  "versionCode": 24,
-  "versionName": "1.0.24",
-  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.24/app-debug.apk",
-  "notes": "Complementos: nao desmarca ao rolar nem no sync; cupom lista as opcoes escolhidas. Catalogo nao atualiza com modal aberto."
+  "versionCode": 25,
+  "versionName": "1.0.25",
+  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.25/app-debug.apk",
+  "notes": "Cupom: complementos imprimem so o nome da opcao, sem repetir o grupo (ex. Sabores Sorvete)."
 }

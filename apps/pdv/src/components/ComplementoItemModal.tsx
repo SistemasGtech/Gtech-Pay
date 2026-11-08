@@ -139,7 +139,7 @@ export function ComplementoItemModal({
         if (opc) {
           opcoes.push({
             id: String(opc.id),
-            nome: `${g.nome} – ${opc.nome}`,
+            nome: opc.nome,
             preco: Number(opc.preco || 0),
           });
         }
