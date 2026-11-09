@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Complemento, ItemCarrinho, Produto } from '@gtech/shared';
+import { gruposComplementoDoProduto, type Complemento, type ItemCarrinho, type Produto } from '@gtech/shared';
 import { complementoGrupoTheme } from '../lib/categoriaUi';
 
 /** Distância (px) acima da qual o toque vira rolagem e não alterna a opção. */
@@ -67,11 +67,7 @@ type Props = {
   newCarrinhoItemId: () => string;
 };
 
-export function gruposComplementoDoProduto(produto: Produto, complementos: Complemento[]): Complemento[] {
-  const order = (produto.complementoIds ?? []).map(String);
-  const byId = new Map(complementos.map((c) => [String(c.id), c]));
-  return order.map((id) => byId.get(id)).filter((c): c is Complemento => Boolean(c));
-}
+export { gruposComplementoDoProduto };
 
 export function ComplementoItemModal({
   produto,

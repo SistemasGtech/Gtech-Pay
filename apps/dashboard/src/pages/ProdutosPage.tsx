@@ -177,8 +177,10 @@ export function ProdutosPage({ produtos, categorias, complementos, onSave }: Pro
 
             <div className="border border-slate-800 rounded-xl p-3 space-y-3">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Complementos (ordem no PDV)</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Use subir/descer para definir a sequência na venda.</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Complementos (ordem de montagem)</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Ex.: sorvete → recheio → caldo → cobertura. Vale no PDV e nos relatórios do Histórico.
+                </p>
               </div>
 
               {complementos.length === 0 ? (

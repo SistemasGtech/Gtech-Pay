@@ -1,8 +1,8 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import type { Venda } from '@gtech/shared';
+import { useMemo, useState } from 'react';
+import type { Categoria, Complemento, Produto, Venda } from '@gtech/shared';
 import {
   relatorioComplementosSaboresMesAno,
-  relatorioItensVendidos,
+  relatorioItensComComplementosPorCategoria,
   resumoVendas,
   totalFaturamento,
   totalItensVendidos,
@@ -14,6 +14,9 @@ import {
 
 type Props = {
   vendas: Venda[];
+  produtos: Produto[];
+  categorias: Categoria[];
+  complementos: Complemento[];
   onChange: () => void;
   onDelete: (id: string) => Promise<void>;
 };
@@ -50,11 +53,15 @@ function tituloPeriodo(periodo: PeriodoRelatorio, dataRef: Date, labelMes: strin
   return 'Todo histórico';
 }
 
-export function VendasPage({ vendas, onChange, onDelete }: Props) {
+export function VendasPage({ vendas, produtos, categorias, complementos, onChange, onDelete }: Props) {
   const [busca, setBusca] = useState('');
   const [periodoRelatorio, setPeriodoRelatorio] = useState<PeriodoRelatorio>('mes');
   const [dataRefIso, setDataRefIso] = useState(hojeIso);
   const [listaExpandida, setListaExpandida] = useState(false);
+  const [relatorioItensExpandido, setRelatorioItensExpandido] = useState(true);
+  const [relatorioComplementosExpandido, setRelatorioComplementosExpandido] = useState(true);
+  const [categoriasMinimizadas, setCategoriasMinimizadas] = useState<Record<string, boolean>>({});
+  const [itensMinimizados, setItensMinimizados] = useState<Record<string, boolean>>({});
 
   const dataRef = parseDataRef(dataRefIso);
   const resumo = resumoVendas(vendas, dataRef);
@@ -64,7 +71,18 @@ export function VendasPage({ vendas, onChange, onDelete }: Props) {
     [vendas, periodoRelatorio, dataRefIso],
   );
 
-  const itensRelatorio = useMemo(() => relatorioItensVendidos(vendasParaRelatorio), [vendasParaRelatorio]);
+  const relatorioPorCategoria = useMemo(
+    () => relatorioItensComComplementosPorCategoria(vendasParaRelatorio, complementos, produtos, categorias),
+    [vendasParaRelatorio, complementos, produtos, categorias],
+  );
+
+  const toggleCategoriaMinimizada = (id: string) => {
+    setCategoriasMinimizadas((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleItemMinimizado = (chave: string) => {
+    setItensMinimizados((prev) => ({ ...prev, [chave]: !prev[chave] }));
+  };
   const saboresRelatorio = useMemo(() => relatorioComplementosSaboresMesAno(vendas, dataRef), [vendas, dataRefIso]);
   const totalQtdRelatorio = totalItensVendidos(vendasParaRelatorio);
   const totalFatRelatorio = totalFaturamento(vendasParaRelatorio);
@@ -159,42 +177,185 @@ export function VendasPage({ vendas, onChange, onDelete }: Props) {
         <MiniStat label="Itens vendidos (mês)" value={String(resumo.itensVendidosMes)} highlight />
       </div>
 
-      <RelatorioTabela
-        titulo="Relatório de itens vendidos"
-        subtitulo={titulo}
-        vazio="Nenhum item vendido neste período."
-        rows={itensRelatorio}
-        totalQtd={totalQtdRelatorio}
-        totalFat={totalFatRelatorio}
-        renderRow={(row, idx, totalQtd) => {
-          const pct = totalQtd ? (row.quantidade / totalQtd) * 100 : 0;
-          return (
-            <tr key={row.chave} className="hover:bg-slate-800/40">
-              <td className="p-3 text-slate-500 font-mono text-xs">{idx + 1}</td>
-              <td className="p-3 font-bold">{row.nome}</td>
-              <td className="p-3 text-right font-mono text-indigo-300">{row.quantidade}</td>
-              <td className="p-3 text-right text-slate-400 text-xs">{pct.toFixed(1)}%</td>
-              <td className="p-3 text-right font-mono text-emerald-400">R$ {row.faturamento.toFixed(2)}</td>
-            </tr>
-          );
-        }}
-        headExtra={null}
-      />
+      <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setRelatorioItensExpandido((v) => !v)}
+          className="w-full p-4 flex flex-wrap items-center justify-between gap-3 text-left hover:bg-slate-800/30 border-b border-slate-800"
+          aria-expanded={relatorioItensExpandido}
+        >
+          <div>
+            <h2 className="text-sm font-black text-white">Relatório de itens vendidos</h2>
+            <p className="text-xs text-slate-400 capitalize mt-0.5">
+              {titulo} · por categoria, na ordem do catálogo
+              {!relatorioItensExpandido && ' · toque para expandir'}
+            </p>
+            <div className="flex flex-wrap gap-4 mt-2 text-xs font-bold">
+              <span className="text-indigo-300">{totalQtdRelatorio} itens</span>
+              <span className="text-emerald-400">R$ {totalFatRelatorio.toFixed(2)}</span>
+            </div>
+          </div>
+          <span className="text-xs font-black text-indigo-400 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 shrink-0">
+            {relatorioItensExpandido ? 'Minimizar ▲' : 'Expandir ▼'}
+          </span>
+        </button>
+
+        {relatorioItensExpandido &&
+          (relatorioPorCategoria.length === 0 ? (
+            <p className="p-6 text-sm text-slate-500 text-center">Nenhum item vendido neste período.</p>
+          ) : (
+            <div className="divide-y divide-slate-800">
+              {relatorioPorCategoria.map((cat) => {
+                const catMin = Boolean(categoriasMinimizadas[cat.categoriaId]);
+                return (
+                  <div key={cat.categoriaId} className="bg-slate-900/50">
+                    <div className="p-3 md:p-4 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 bg-slate-950/40">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: cat.cor }}
+                          aria-hidden
+                        />
+                        <h3 className="text-sm font-black text-white uppercase tracking-wide truncate">
+                          {cat.categoriaNome}
+                        </h3>
+                        <span className="text-[10px] font-bold text-slate-500">
+                          {cat.totalItensQtd} un. · R$ {cat.totalFaturamento.toFixed(2)}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleCategoriaMinimizada(cat.categoriaId)}
+                        className="text-xs font-black text-slate-400 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600"
+                        aria-expanded={!catMin}
+                      >
+                        {catMin ? 'Expandir ▼' : 'Minimizar ▲'}
+                      </button>
+                    </div>
+
+                    {!catMin && (
+                      <div className="divide-y divide-slate-800/80">
+                        {cat.itens.map((item, itemIdx) => {
+                          const pctItem = cat.totalItensQtd ? (item.quantidade / cat.totalItensQtd) * 100 : 0;
+                          const itemMin = Boolean(itensMinimizados[item.chave]);
+                          return (
+                            <div key={item.chave} className="p-4 space-y-3">
+                              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-slate-500 font-mono text-xs shrink-0">{itemIdx + 1}.</span>
+                                  <h4 className="text-base font-bold text-white truncate">{item.nome}</h4>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                  <div className="flex flex-wrap gap-3 text-xs font-bold">
+                                    <span className="font-mono text-indigo-300">{item.quantidade} un.</span>
+                                    <span className="text-slate-500">{pctItem.toFixed(1)}% da categoria</span>
+                                    <span className="font-mono text-emerald-400">R$ {item.faturamento.toFixed(2)}</span>
+                                  </div>
+                                  {item.gruposComplemento.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleItemMinimizado(item.chave)}
+                                      className="text-[10px] font-black text-slate-500 px-2 py-1 rounded-lg border border-slate-800 hover:text-slate-300"
+                                      aria-expanded={!itemMin}
+                                    >
+                                      {itemMin ? 'Expandir compl. ▼' : 'Minimizar compl. ▲'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {!itemMin &&
+                                (item.gruposComplemento.length === 0 ? (
+                                  <p className="text-xs text-slate-600 pl-6">Sem complementos neste período.</p>
+                                ) : (
+                                  <div className="pl-4 md:pl-6 space-y-2 border-l-2 border-slate-800">
+                                    {item.gruposComplemento.map((grupo) => (
+                                      <div
+                                        key={grupo.grupoId}
+                                        className="rounded-xl border border-slate-800 bg-slate-950/50 overflow-hidden"
+                                      >
+                                        {item.gruposComplemento.length > 1 && (
+                                          <div className="px-3 py-1.5 border-b border-slate-800 text-[10px] font-black uppercase text-slate-500">
+                                            {grupo.grupoNome}
+                                          </div>
+                                        )}
+                                        <table className="w-full text-sm">
+                                          <tbody className="divide-y divide-slate-800/60">
+                                            {grupo.opcoes.map((op, rank) => {
+                                              const pct = grupo.totalQtd ? (op.quantidade / grupo.totalQtd) * 100 : 0;
+                                              return (
+                                                <tr key={op.opcaoId} className="hover:bg-slate-800/25">
+                                                  <td className="p-2 pl-3 font-medium text-slate-200">
+                                                    <span
+                                                      className={`inline-flex items-center justify-center min-w-[1.25rem] mr-2 text-[10px] font-black rounded-md px-1 ${
+                                                        rank === 0
+                                                          ? 'bg-amber-500/20 text-amber-300'
+                                                          : 'bg-slate-800 text-slate-500'
+                                                      }`}
+                                                    >
+                                                      {rank + 1}
+                                                    </span>
+                                                    {op.nome}
+                                                  </td>
+                                                  <td className="p-2 text-right font-mono text-indigo-300 whitespace-nowrap">
+                                                    {op.quantidade}
+                                                  </td>
+                                                  <td className="p-2 pr-3 text-right text-slate-400 text-xs whitespace-nowrap w-16">
+                                                    {pct.toFixed(0)}%
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+      </section>
 
       <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-slate-800">
-          <h2 className="text-sm font-black text-white">Relatório de complementos vendidos</h2>
-          <p className="text-xs text-slate-400">
-            Sabores iguais somados · mês: <span className="capitalize text-slate-300">{resumo.labelMes}</span> · ano:{' '}
-            {dataRef.getFullYear()}
-          </p>
-        </div>
+        <button
+          type="button"
+          onClick={() => setRelatorioComplementosExpandido((v) => !v)}
+          className="w-full p-4 flex flex-wrap items-center justify-between gap-3 text-left hover:bg-slate-800/30 border-b border-slate-800"
+          aria-expanded={relatorioComplementosExpandido}
+        >
+          <div>
+            <h2 className="text-sm font-black text-white">Relatório de complementos vendidos</h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Sabores iguais somados · mês: <span className="capitalize text-slate-300">{resumo.labelMes}</span> · ano:{' '}
+              {dataRef.getFullYear()}
+              {!relatorioComplementosExpandido && ' · toque para expandir'}
+            </p>
+            {saboresRelatorio.length > 0 && (
+              <p className="text-[10px] font-bold text-slate-500 mt-2">
+                {saboresRelatorio.length} {saboresRelatorio.length === 1 ? 'sabor' : 'sabores'} · mês {totalQtdSaboresMes} · ano{' '}
+                {totalQtdSaboresAno}
+              </p>
+            )}
+          </div>
+          <span className="text-xs font-black text-indigo-400 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 shrink-0">
+            {relatorioComplementosExpandido ? 'Minimizar ▲' : 'Expandir ▼'}
+          </span>
+        </button>
 
-        {saboresRelatorio.length === 0 ? (
-          <p className="p-6 text-sm text-slate-500 text-center">Nenhum complemento vendido no mês ou no ano de referência.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+        {relatorioComplementosExpandido &&
+          (saboresRelatorio.length === 0 ? (
+            <p className="p-6 text-sm text-slate-500 text-center">Nenhum complemento vendido no mês ou no ano de referência.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
               <thead className="bg-slate-950 text-slate-400 text-left">
                 <tr>
                   <th className="p-3">#</th>
@@ -232,9 +393,9 @@ export function VendasPage({ vendas, onChange, onDelete }: Props) {
                   <td className="p-3 text-right">100%</td>
                 </tr>
               </tfoot>
-            </table>
-          </div>
-        )}
+              </table>
+            </div>
+          ))}
       </section>
 
       <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
@@ -325,70 +486,6 @@ export function VendasPage({ vendas, onChange, onDelete }: Props) {
         )}
       </section>
     </div>
-  );
-}
-
-type RelatorioRow = { chave: string; quantidade: number; faturamento: number };
-
-function RelatorioTabela<T extends RelatorioRow>({
-  titulo,
-  subtitulo,
-  vazio,
-  rows,
-  totalQtd,
-  totalFat,
-  renderRow,
-  headExtra,
-  footColSpan = 2,
-}: {
-  titulo: string;
-  subtitulo: string;
-  vazio: string;
-  rows: T[];
-  totalQtd: number;
-  totalFat: number;
-  renderRow: (row: T, idx: number, totalQtd: number) => ReactNode;
-  headExtra: ReactNode;
-  footColSpan?: number;
-}) {
-  return (
-    <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-      <div className="p-4 border-b border-slate-800">
-        <h2 className="text-sm font-black text-white">{titulo}</h2>
-        <p className="text-xs text-slate-400 capitalize">{subtitulo}</p>
-      </div>
-
-      {rows.length === 0 ? (
-        <p className="p-6 text-sm text-slate-500 text-center">{vazio}</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-950 text-slate-400 text-left">
-              <tr>
-                <th className="p-3">#</th>
-                <th className="p-3">{titulo.includes('complemento') ? 'Opção' : 'Item'}</th>
-                <th className="p-3 text-right">Qtd.</th>
-                {headExtra}
-                <th className="p-3 text-right">Part.</th>
-                <th className="p-3 text-right">Faturamento</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">{rows.map((row, idx) => renderRow(row, idx, totalQtd))}</tbody>
-            <tfoot className="bg-slate-950 border-t border-slate-700 text-sm font-black">
-              <tr>
-                <td className="p-3" colSpan={footColSpan}>
-                  Total
-                </td>
-                <td className="p-3 text-right font-mono text-indigo-300">{totalQtd}</td>
-                {headExtra ? <td className="p-3" colSpan={3} /> : null}
-                <td className="p-3 text-right">100%</td>
-                <td className="p-3 text-right font-mono text-emerald-400">R$ {totalFat.toFixed(2)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-    </section>
   );
 }
 

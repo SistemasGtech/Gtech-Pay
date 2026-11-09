@@ -196,6 +196,21 @@ export function deleteVenda(id: string): Venda[] {
   return list;
 }
 
+/** Ordem de montagem no PDV e nos relatórios (sequência de `complementoIds` do item). */
+export function gruposComplementoDoProduto(produto: Produto, complementos: Complemento[]): Complemento[] {
+  const order = (produto.complementoIds ?? []).map(String);
+  const byId = new Map(complementos.map((c) => [String(c.id), c]));
+  return order.map((id) => byId.get(id)).filter((c): c is Complemento => Boolean(c));
+}
+
+/** Prioridade padrão de etapas quando o item não define `complementoIds`. */
+export function prioridadeMontagemGrupoNome(nome: string): number {
+  const n = nome.trim().toLowerCase();
+  const etapas = ['sorvete', 'recheio', 'caldo', 'cobertura'];
+  const idx = etapas.findIndex((etapa) => n.includes(etapa));
+  return idx >= 0 ? idx : 500;
+}
+
 export function replaceVenda(venda: Venda): Venda[] {
   const list = loadVendas();
   const idx = list.findIndex((v) => v.id === venda.id);
