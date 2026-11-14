@@ -3,7 +3,17 @@ import { buildTwoViaReceipt, buildSimpleTestReceipt, bytesToBase64 } from '@gtec
 import type { LojaInfo, Venda } from '@gtech/shared';
 import { Capacitor } from '@capacitor/core';
 import { ThermalPrinter } from '@devlas/capacitor-thermal-printer';
-import { listBondedBluetoothDevices, withTimeout, LIST_TIMEOUT_MS, ensureBondedBluetoothPermission, pingBondedBluetoothPlugin, isAndroidBluetoothConnectGranted, printBluetoothEscPos, probeBluetoothPrinterConnect } from '../lib/bondedBluetooth';
+import {
+  listBondedBluetoothDevices,
+  withTimeout,
+  LIST_TIMEOUT_MS,
+  ensureBondedBluetoothPermission,
+  pingBondedBluetoothPlugin,
+  isAndroidBluetoothConnectGranted,
+  printBluetoothEscPos,
+  probeBluetoothPrinterConnect,
+  resetBluetoothPrintSession,
+} from '../lib/bondedBluetooth';
 
 export const PRINTER_STORAGE_KEY = 'gtech_printer_config';
 
@@ -381,15 +391,21 @@ function printViaBrowser(venda: Venda, loja: LojaInfo, config: PrinterConfig): v
 
 async function printViaNative(venda: Venda, loja: LojaInfo, config: PrinterConfig): Promise<void> {
   const { ThermalPrinter } = getThermalPrinter();
-  const data = buildTwoViaReceipt(venda, loja, config);
-  const payload = bytesToBase64(data);
+  const payload = bytesToBase64(buildTwoViaReceipt(venda, loja, config));
 
   if (config.transport === 'bluetooth') {
     const macErr = validateBluetoothMacForPrint(config.bluetoothAddress);
     if (macErr) throw new Error(macErr);
     const address = normalizeMac(config.bluetoothAddress);
     if (Capacitor.getPlatform() === 'android') {
-      await printBluetoothEscPos(address, payload);
+      try {
+        await printBluetoothEscPos(address, payload);
+      } catch (e) {
+        if (/permission|permissao|denied/i.test(String(e instanceof Error ? e.message : e))) {
+          resetBluetoothPrintSession();
+        }
+        throw e;
+      }
       return;
     }
     await ThermalPrinter.print({ transport: 'bluetooth', address, data: payload });

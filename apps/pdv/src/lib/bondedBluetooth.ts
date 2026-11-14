@@ -100,6 +100,9 @@ export async function listBondedBluetoothDevices(): Promise<BondedBtDevice[]> {
 
 const PRINT_TIMEOUT_MS = 120_000;
 
+/** Evita round-trip nativo de permissão a cada cupom (válido até o app fechar). */
+let bluetoothPrintSessionReady = false;
+
 /** Abre o pedido de BLUETOOTH_CONNECT (Dispositivos por perto) antes de imprimir. */
 export async function syncAndroidBluetoothConnectPermission(): Promise<boolean> {
   if (Capacitor.getPlatform() !== 'android') return true;
@@ -114,12 +117,19 @@ export async function syncAndroidBluetoothConnectPermission(): Promise<boolean> 
 /** Impressão ESC/POS via SPP — não usa o plugin térmico (evita falso erro de permissão). */
 export async function printBluetoothEscPos(address: string, dataBase64: string): Promise<void> {
   const mac = address.trim();
-  await syncAndroidBluetoothConnectPermission();
+  if (!bluetoothPrintSessionReady) {
+    const ok = await syncAndroidBluetoothConnectPermission();
+    bluetoothPrintSessionReady = ok;
+  }
   await withTimeout(
     GtechBondedBluetooth.printEscPos({ address: mac, data: dataBase64 }),
     PRINT_TIMEOUT_MS,
     'Impressão',
   );
+}
+
+export function resetBluetoothPrintSession(): void {
+  bluetoothPrintSessionReady = false;
 }
 
 export async function probeBluetoothPrinterConnect(address: string): Promise<string> {

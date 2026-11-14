@@ -207,7 +207,11 @@ export function buildSimpleTestReceipt(loja: LojaInfo): Uint8Array {
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {
+  const chunk = 0x8000;
   let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i += chunk) {
+    const slice = bytes.subarray(i, i + chunk);
+    binary += String.fromCharCode(...slice);
+  }
   return btoa(binary);
 }

@@ -37,8 +37,9 @@ import java.util.concurrent.Executors;
 public class BondedDevicesPlugin extends Plugin {
 
     private static final UUID SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
-    private static final int CHUNK_SIZE = 512;
-    private static final long CHUNK_GAP_MS = 20L;
+    private static final int CHUNK_SIZE = 2048;
+    private static final long CHUNK_GAP_MS = 4L;
+    private static final long POST_CONNECT_MS = 80L;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -204,7 +205,9 @@ public class BondedDevicesPlugin extends Plugin {
                 assertBonded(adapter, address);
                 BluetoothDevice device = adapter.getRemoteDevice(address);
                 try (BluetoothSocket socket = openSocket(device)) {
-                    Thread.sleep(350L);
+                    if (POST_CONNECT_MS > 0) {
+                        Thread.sleep(POST_CONNECT_MS);
+                    }
                     OutputStream out = socket.getOutputStream();
                     int offset = 0;
                     while (offset < bytes.length) {
@@ -212,11 +215,11 @@ public class BondedDevicesPlugin extends Plugin {
                         out.write(bytes, offset, len);
                         out.flush();
                         offset += len;
-                        if (offset < bytes.length) {
+                        if (offset < bytes.length && CHUNK_GAP_MS > 0) {
                             Thread.sleep(CHUNK_GAP_MS);
                         }
                     }
-                    long drain = Math.min(5000L, Math.max(500L, bytes.length / 32L));
+                    long drain = Math.min(2500L, Math.max(120L, bytes.length / 64L));
                     Thread.sleep(drain);
                 }
                 call.resolve();

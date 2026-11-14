@@ -1,5 +1,5 @@
 import { prioridadeMontagemGrupoNome } from './catalog';
-import type { Categoria, Complemento, Produto, Venda } from './types';
+import type { Categoria, Complemento, FormaPagamento, Produto, Venda } from './types';
 
 /** Data da venda a partir de timestamp ou string dd/mm/aaaa */
 export function vendaDate(v: Venda): Date {
@@ -442,4 +442,40 @@ export function relatorioItensComComplementosPorCategoria(
   }
 
   return resultado;
+}
+
+const ORDEM_PAGAMENTO: FormaPagamento[] = ['PIX', 'Cartão Crédito', 'Cartão Débito', 'Dinheiro'];
+
+export interface TipoPagamentoResumo {
+  pagamento: string;
+  quantidade: number;
+  faturamento: number;
+}
+
+/** Agrupa vendas do período por forma de pagamento (PIX, cartões, dinheiro). */
+export function relatorioTiposPagamento(vendas: Venda[]): TipoPagamentoResumo[] {
+  const map = new Map<string, TipoPagamentoResumo>();
+
+  for (const venda of vendas) {
+    const nome = (venda.pagamento || 'Outro').trim() || 'Outro';
+    const fat = venda.total || 0;
+    const prev = map.get(nome);
+    if (prev) {
+      prev.quantidade += 1;
+      prev.faturamento += fat;
+    } else {
+      map.set(nome, { pagamento: nome, quantidade: 1, faturamento: fat });
+    }
+  }
+
+  return [...map.values()].sort((a, b) => {
+    const ia = ORDEM_PAGAMENTO.indexOf(a.pagamento as FormaPagamento);
+    const ib = ORDEM_PAGAMENTO.indexOf(b.pagamento as FormaPagamento);
+    if (ia !== -1 || ib !== -1) {
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    }
+    return b.faturamento - a.faturamento || a.pagamento.localeCompare(b.pagamento, 'pt-BR');
+  });
 }

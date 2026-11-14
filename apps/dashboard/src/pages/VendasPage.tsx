@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import type { Categoria, Complemento, Produto, Venda } from '@gtech/shared';
+import type { Categoria, Complemento, Produto, TipoPagamentoResumo, Venda } from '@gtech/shared';
 import {
   relatorioComplementosSaboresMesAno,
   relatorioItensComComplementosPorCategoria,
+  relatorioTiposPagamento,
   resumoVendas,
   totalFaturamento,
   totalItensVendidos,
@@ -22,6 +23,7 @@ type Props = {
 };
 
 type PeriodoRelatorio = 'dia' | 'mes' | 'ano' | 'tudo';
+type AbaHistorico = 'itens' | 'pagamentos';
 
 function hojeIso(): string {
   const d = new Date();
@@ -58,6 +60,7 @@ export function VendasPage({ vendas, produtos, categorias, complementos, onChang
   const [periodoRelatorio, setPeriodoRelatorio] = useState<PeriodoRelatorio>('mes');
   const [dataRefIso, setDataRefIso] = useState(hojeIso);
   const [listaExpandida, setListaExpandida] = useState(false);
+  const [aba, setAba] = useState<AbaHistorico>('itens');
   const [relatorioItensExpandido, setRelatorioItensExpandido] = useState(true);
   const [relatorioComplementosExpandido, setRelatorioComplementosExpandido] = useState(true);
   const [categoriasMinimizadas, setCategoriasMinimizadas] = useState<Record<string, boolean>>({});
@@ -74,6 +77,19 @@ export function VendasPage({ vendas, produtos, categorias, complementos, onChang
   const relatorioPorCategoria = useMemo(
     () => relatorioItensComComplementosPorCategoria(vendasParaRelatorio, complementos, produtos, categorias),
     [vendasParaRelatorio, complementos, produtos, categorias],
+  );
+
+  const pagamentosDia = useMemo(
+    () => relatorioTiposPagamento(vendasDoDia(vendas, dataRef)),
+    [vendas, dataRefIso],
+  );
+  const pagamentosMes = useMemo(
+    () => relatorioTiposPagamento(vendasDoMes(vendas, dataRef)),
+    [vendas, dataRefIso],
+  );
+  const pagamentosAno = useMemo(
+    () => relatorioTiposPagamento(vendasDoAno(vendas, dataRef)),
+    [vendas, dataRefIso],
   );
 
   const toggleCategoriaMinimizada = (id: string) => {
@@ -126,22 +142,24 @@ export function VendasPage({ vendas, produtos, categorias, complementos, onChang
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-end gap-3 flex-wrap">
-        <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold">
-          {periodoBotoes.map(({ id, label }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setPeriodoRelatorio(id)}
-              className={`px-3 py-1.5 rounded-lg ${periodoRelatorio === id ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {periodoRelatorio !== 'tudo' && (
+        {aba === 'itens' && (
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold">
+            {periodoBotoes.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setPeriodoRelatorio(id)}
+                className={`px-3 py-1.5 rounded-lg ${periodoRelatorio === id ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {(aba === 'pagamentos' || periodoRelatorio !== 'tudo') && (
           <div>
             <label className="text-[10px] font-bold uppercase text-slate-500 block mb-1">
-              {periodoRelatorio === 'dia' ? 'Data' : periodoRelatorio === 'mes' ? 'Mês de referência' : 'Ano de referência'}
+              {aba === 'pagamentos' ? 'Data de referência' : periodoRelatorio === 'dia' ? 'Data' : periodoRelatorio === 'mes' ? 'Mês de referência' : 'Ano de referência'}
             </label>
             <input
               type="date"
@@ -151,7 +169,7 @@ export function VendasPage({ vendas, produtos, categorias, complementos, onChang
             />
           </div>
         )}
-        {ultimasDatas.length > 0 && periodoRelatorio === 'dia' && (
+        {aba === 'itens' && ultimasDatas.length > 0 && periodoRelatorio === 'dia' && (
           <div className="flex flex-wrap gap-1 items-center">
             <span className="text-[10px] text-slate-500 font-bold uppercase">Rápido:</span>
             {ultimasDatas.map((iso) => (
@@ -170,13 +188,33 @@ export function VendasPage({ vendas, produtos, categorias, complementos, onChang
         )}
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MiniStat label="Faturamento diário" value={`R$ ${resumo.faturamentoDiario.toFixed(2)}`} />
-        <MiniStat label="Faturamento mensal" value={`R$ ${resumo.faturamentoMensal.toFixed(2)}`} />
-        <MiniStat label="Faturamento anual" value={`R$ ${resumo.faturamentoAnual.toFixed(2)}`} />
-        <MiniStat label="Itens vendidos (mês)" value={String(resumo.itensVendidosMes)} highlight />
+      {aba === 'itens' && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <MiniStat label="Faturamento diário" value={`R$ ${resumo.faturamentoDiario.toFixed(2)}`} />
+          <MiniStat label="Faturamento mensal" value={`R$ ${resumo.faturamentoMensal.toFixed(2)}`} />
+          <MiniStat label="Faturamento anual" value={`R$ ${resumo.faturamentoAnual.toFixed(2)}`} />
+          <MiniStat label="Itens vendidos (mês)" value={String(resumo.itensVendidosMes)} highlight />
+        </div>
+      )}
+
+      <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-sm font-bold w-fit">
+        <button
+          type="button"
+          onClick={() => setAba('itens')}
+          className={`px-4 py-2 rounded-lg ${aba === 'itens' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}
+        >
+          Itens
+        </button>
+        <button
+          type="button"
+          onClick={() => setAba('pagamentos')}
+          className={`px-4 py-2 rounded-lg ${aba === 'pagamentos' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}
+        >
+          Tipos de pagamento
+        </button>
       </div>
 
+      {aba === 'itens' && (
       <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
         <button
           type="button"
@@ -323,7 +361,18 @@ export function VendasPage({ vendas, produtos, categorias, complementos, onChang
             </div>
           ))}
       </section>
+      )}
 
+      {aba === 'pagamentos' && (
+        <div className="space-y-4">
+          <TabelaPagamentos titulo="Dia" rows={pagamentosDia} />
+          <TabelaPagamentos titulo="Mês" rows={pagamentosMes} />
+          <TabelaPagamentos titulo="Ano" rows={pagamentosAno} />
+        </div>
+      )}
+
+      {aba === 'itens' && (
+        <>
       <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
         <button
           type="button"
@@ -485,7 +534,79 @@ export function VendasPage({ vendas, produtos, categorias, complementos, onChang
           </div>
         )}
       </section>
+        </>
+      )}
     </div>
+  );
+}
+
+function TabelaPagamentos({
+  titulo,
+  rows,
+}: {
+  titulo: string;
+  rows: TipoPagamentoResumo[];
+}) {
+  const totalQtd = rows.reduce((s, r) => s + r.quantidade, 0);
+  const totalFat = rows.reduce((s, r) => s + r.faturamento, 0);
+
+  return (
+    <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+      <div className="p-4 border-b border-slate-800">
+        <h2 className="text-sm font-black text-white">{titulo}</h2>
+        <div className="flex flex-wrap gap-4 mt-2 text-xs font-bold">
+          <span className="text-indigo-300">
+            {totalQtd} {totalQtd === 1 ? 'venda' : 'vendas'}
+          </span>
+          <span className="text-emerald-400">R$ {totalFat.toFixed(2)}</span>
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <p className="p-6 text-sm text-slate-500 text-center">Nenhuma venda neste período.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-950 text-slate-400 text-left">
+              <tr>
+                <th className="p-3">#</th>
+                <th className="p-3">Tipo</th>
+                <th className="p-3 text-right">Vendas</th>
+                <th className="p-3 text-right">Part. vendas</th>
+                <th className="p-3 text-right">Faturamento</th>
+                <th className="p-3 text-right">Part. valor</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {rows.map((row, idx) => {
+                const pctQtd = totalQtd ? (row.quantidade / totalQtd) * 100 : 0;
+                const pctFat = totalFat ? (row.faturamento / totalFat) * 100 : 0;
+                return (
+                  <tr key={row.pagamento} className="hover:bg-slate-800/40">
+                    <td className="p-3 text-slate-500 font-mono text-xs">{idx + 1}</td>
+                    <td className="p-3 font-bold">{row.pagamento}</td>
+                    <td className="p-3 text-right font-mono text-indigo-300">{row.quantidade}</td>
+                    <td className="p-3 text-right text-slate-400 text-xs">{pctQtd.toFixed(1)}%</td>
+                    <td className="p-3 text-right font-mono text-emerald-400">R$ {row.faturamento.toFixed(2)}</td>
+                    <td className="p-3 text-right text-slate-400 text-xs">{pctFat.toFixed(1)}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot className="bg-slate-950 border-t border-slate-700 text-sm font-black">
+              <tr>
+                <td className="p-3" colSpan={2}>
+                  Total
+                </td>
+                <td className="p-3 text-right font-mono text-indigo-300">{totalQtd}</td>
+                <td className="p-3 text-right">100%</td>
+                <td className="p-3 text-right font-mono text-emerald-400">R$ {totalFat.toFixed(2)}</td>
+                <td className="p-3 text-right">100%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 

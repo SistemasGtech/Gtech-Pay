@@ -1,6 +1,6 @@
 {
-  "versionCode": 27,
-  "versionName": "1.0.27",
-  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.27/app-debug.apk",
-  "notes": "Sincronizar vendas: renova login, corrige IDs e limpa fila se a venda ja existir no dashboard."
+  "versionCode": 28,
+  "versionName": "1.0.28",
+  "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.28/app-debug.apk",
+  "notes": "Dashboard: abas Itens e Tipos de pagamento (dia/mes/ano) no historico. PDV: impressao Bluetooth mais rapida e feedback Imprimindo."
 }

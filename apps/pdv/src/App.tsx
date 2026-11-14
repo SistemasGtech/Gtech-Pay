@@ -128,6 +128,8 @@ function App() {
   const [valorRecebido, setValorRecebido] = useState('');
   const [vendas, setVendas] = useState<Venda[]>(() => loadVendas());
   const [ultimaVenda, setUltimaVenda] = useState<Venda | null>(null);
+  const [printBusyId, setPrintBusyId] = useState<string | null>(null);
+  const printInFlightRef = useRef(false);
   const [toast, setToast] = useState('');
   const [etapaVenda, setEtapaVenda] = useState<EtapaVenda>('pedido');
   const [pendingCount, setPendingCount] = useState(() =>
@@ -167,6 +169,24 @@ function App() {
     setToast(t);
     setTimeout(() => setToast(''), 2500);
   };
+
+  const handleImprimirVenda = useCallback(
+    async (venda: Venda) => {
+      if (printInFlightRef.current) return;
+      printInFlightRef.current = true;
+      setPrintBusyId(venda.id);
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      try {
+        await imprimirVenda(venda, loja, printerConfig);
+      } catch (e) {
+        notify(e instanceof Error ? e.message : 'Erro ao imprimir');
+      } finally {
+        printInFlightRef.current = false;
+        setPrintBusyId(null);
+      }
+    },
+    [loja, printerConfig],
+  );
 
   const pushSenhaConfig = useCallback(
     (c: SenhaConfig) => {
@@ -562,11 +582,7 @@ function App() {
     }
 
     if (printerConfig.imprimirAutomatico) {
-      try {
-        await imprimirVenda(venda, loja, printerConfig);
-      } catch (e) {
-        notify(e instanceof Error ? e.message : 'Erro ao imprimir');
-      }
+      void handleImprimirVenda(venda);
     }
   };
 
@@ -607,11 +623,7 @@ function App() {
     }
     setVendaEditando(null);
     if (reprint) {
-      try {
-        await imprimirVenda(updated, loja, printerConfig);
-      } catch (e) {
-        notify(e instanceof Error ? e.message : 'Erro ao imprimir');
-      }
+      await handleImprimirVenda(updated);
     }
   };
 
@@ -1057,10 +1069,11 @@ function App() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void imprimirVenda(v, loja, printerConfig).catch((e) => notify(e instanceof Error ? e.message : 'Erro ao imprimir'))}
-                      className="flex-1 min-w-[5rem] py-2 px-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold"
+                      disabled={printBusyId === v.id}
+                      onClick={() => void handleImprimirVenda(v)}
+                      className="flex-1 min-w-[5rem] py-2 px-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-xs font-bold"
                     >
-                      Imprimir
+                      {printBusyId === v.id ? 'Imprimindo…' : 'Imprimir'}
                     </button>
                   </div>
                 </li>
@@ -1506,10 +1519,11 @@ function App() {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => imprimirVenda(ultimaVenda, loja, printerConfig)}
-                className="flex-1 py-2 bg-indigo-600 rounded-xl text-xs font-bold"
+                disabled={printBusyId === ultimaVenda.id}
+                onClick={() => void handleImprimirVenda(ultimaVenda)}
+                className="flex-1 py-2 bg-indigo-600 disabled:opacity-60 rounded-xl text-xs font-bold"
               >
-                Reimprimir
+                {printBusyId === ultimaVenda.id ? 'Imprimindo…' : 'Reimprimir'}
               </button>
               <button
                 type="button"
