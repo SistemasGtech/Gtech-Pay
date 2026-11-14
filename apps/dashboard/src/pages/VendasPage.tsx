@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react';
-import type { Categoria, Complemento, Produto, TipoPagamentoResumo, Venda } from '@gtech/shared';
+import { useEffect, useMemo, useState } from 'react';
+import type { Categoria, Complemento, LojaInfo, Produto, TaxasMaquininha, TipoPagamentoResumo, Venda } from '@gtech/shared';
+import { taxasMaquininhaEfetivas } from '@gtech/shared';
+import { TaxaMaquininhaInput } from '../components/TaxaMaquininhaInput';
 import {
   relatorioComplementosSaboresMesAno,
   relatorioItensComComplementosPorCategoria,
@@ -18,6 +20,8 @@ type Props = {
   produtos: Produto[];
   categorias: Categoria[];
   complementos: Complemento[];
+  loja: LojaInfo;
+  onSaveTaxasMaquininha: (taxas: TaxasMaquininha) => void;
   onChange: () => void;
   onDelete: (id: string) => Promise<void>;
 };
@@ -55,7 +59,7 @@ function tituloPeriodo(periodo: PeriodoRelatorio, dataRef: Date, labelMes: strin
   return 'Todo histórico';
 }
 
-export function VendasPage({ vendas, produtos, categorias, complementos, onChange, onDelete }: Props) {
+export function VendasPage({ vendas, produtos, categorias, complementos, loja, onSaveTaxasMaquininha, onChange, onDelete }: Props) {
   const [busca, setBusca] = useState('');
   const [periodoRelatorio, setPeriodoRelatorio] = useState<PeriodoRelatorio>('mes');
   const [dataRefIso, setDataRefIso] = useState(hojeIso);
@@ -65,6 +69,11 @@ export function VendasPage({ vendas, produtos, categorias, complementos, onChang
   const [relatorioComplementosExpandido, setRelatorioComplementosExpandido] = useState(true);
   const [categoriasMinimizadas, setCategoriasMinimizadas] = useState<Record<string, boolean>>({});
   const [itensMinimizados, setItensMinimizados] = useState<Record<string, boolean>>({});
+  const [taxasForm, setTaxasForm] = useState<TaxasMaquininha>(() => taxasMaquininhaEfetivas(loja));
+
+  useEffect(() => {
+    setTaxasForm(taxasMaquininhaEfetivas(loja));
+  }, [loja]);
 
   const dataRef = parseDataRef(dataRefIso);
   const resumo = resumoVendas(vendas, dataRef);
@@ -80,16 +89,16 @@ export function VendasPage({ vendas, produtos, categorias, complementos, onChang
   );
 
   const pagamentosDia = useMemo(
-    () => relatorioTiposPagamento(vendasDoDia(vendas, dataRef)),
-    [vendas, dataRefIso],
+    () => relatorioTiposPagamento(vendasDoDia(vendas, dataRef), taxasForm),
+    [vendas, dataRefIso, taxasForm],
   );
   const pagamentosMes = useMemo(
-    () => relatorioTiposPagamento(vendasDoMes(vendas, dataRef)),
-    [vendas, dataRefIso],
+    () => relatorioTiposPagamento(vendasDoMes(vendas, dataRef), taxasForm),
+    [vendas, dataRefIso, taxasForm],
   );
   const pagamentosAno = useMemo(
-    () => relatorioTiposPagamento(vendasDoAno(vendas, dataRef)),
-    [vendas, dataRefIso],
+    () => relatorioTiposPagamento(vendasDoAno(vendas, dataRef), taxasForm),
+    [vendas, dataRefIso, taxasForm],
   );
 
   const toggleCategoriaMinimizada = (id: string) => {
@@ -365,6 +374,36 @@ export function VendasPage({ vendas, produtos, categorias, complementos, onChang
 
       {aba === 'pagamentos' && (
         <div className="space-y-4">
+          <section className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+            <div>
+              <h2 className="text-sm font-black text-white">Taxas da maquininha (teste)</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Informe só as taxas de <strong className="text-slate-300">débito</strong> e <strong className="text-slate-300">crédito</strong> até o líquido bater com o extrato.
+                Bruto = total no PDV; líquido = bruto menos taxa.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 max-w-md">
+              <TaxaMaquininhaInput
+                label="Débito %"
+                value={taxasForm.cartaoDebito}
+                resetKey={`${loja.taxasMaquininha?.cartaoDebito}-${loja.taxasMaquininha?.cartaoCredito}`}
+                onChange={(v) => setTaxasForm((prev) => ({ ...prev, cartaoDebito: v }))}
+              />
+              <TaxaMaquininhaInput
+                label="Crédito %"
+                value={taxasForm.cartaoCredito}
+                resetKey={`${loja.taxasMaquininha?.cartaoDebito}-${loja.taxasMaquininha?.cartaoCredito}`}
+                onChange={(v) => setTaxasForm((prev) => ({ ...prev, cartaoCredito: v }))}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => onSaveTaxasMaquininha(taxasForm)}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-bold"
+            >
+              Salvar taxas na loja
+            </button>
+          </section>
           <TabelaPagamentos titulo="Dia" rows={pagamentosDia} />
           <TabelaPagamentos titulo="Mês" rows={pagamentosMes} />
           <TabelaPagamentos titulo="Ano" rows={pagamentosAno} />
@@ -548,17 +587,21 @@ function TabelaPagamentos({
   rows: TipoPagamentoResumo[];
 }) {
   const totalQtd = rows.reduce((s, r) => s + r.quantidade, 0);
-  const totalFat = rows.reduce((s, r) => s + r.faturamento, 0);
+  const totalBruto = rows.reduce((s, r) => s + r.faturamento, 0);
+  const totalTaxas = rows.reduce((s, r) => s + r.valorTaxa, 0);
+  const totalLiquido = rows.reduce((s, r) => s + r.liquido, 0);
 
   return (
     <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
       <div className="p-4 border-b border-slate-800">
         <h2 className="text-sm font-black text-white">{titulo}</h2>
-        <div className="flex flex-wrap gap-4 mt-2 text-xs font-bold">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-bold">
           <span className="text-indigo-300">
             {totalQtd} {totalQtd === 1 ? 'venda' : 'vendas'}
           </span>
-          <span className="text-emerald-400">R$ {totalFat.toFixed(2)}</span>
+          <span className="text-emerald-400">Bruto R$ {totalBruto.toFixed(2)}</span>
+          <span className="text-red-400/90">Taxas −R$ {totalTaxas.toFixed(2)}</span>
+          <span className="text-amber-300">Líquido R$ {totalLiquido.toFixed(2)}</span>
         </div>
       </div>
       {rows.length === 0 ? (
@@ -571,23 +614,32 @@ function TabelaPagamentos({
                 <th className="p-3">#</th>
                 <th className="p-3">Tipo</th>
                 <th className="p-3 text-right">Vendas</th>
-                <th className="p-3 text-right">Part. vendas</th>
-                <th className="p-3 text-right">Faturamento</th>
-                <th className="p-3 text-right">Part. valor</th>
+                <th className="p-3 text-right">Bruto</th>
+                <th className="p-3 text-right">Taxa %</th>
+                <th className="p-3 text-right">Taxa R$</th>
+                <th className="p-3 text-right">Líquido</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
               {rows.map((row, idx) => {
-                const pctQtd = totalQtd ? (row.quantidade / totalQtd) * 100 : 0;
-                const pctFat = totalFat ? (row.faturamento / totalFat) * 100 : 0;
+                const destaque =
+                  row.pagamento === 'Cartão Débito' || row.pagamento === 'Cartão Crédito';
                 return (
-                  <tr key={row.pagamento} className="hover:bg-slate-800/40">
+                  <tr
+                    key={row.pagamento}
+                    className={`hover:bg-slate-800/40 ${destaque ? 'bg-indigo-950/20' : ''}`}
+                  >
                     <td className="p-3 text-slate-500 font-mono text-xs">{idx + 1}</td>
                     <td className="p-3 font-bold">{row.pagamento}</td>
                     <td className="p-3 text-right font-mono text-indigo-300">{row.quantidade}</td>
-                    <td className="p-3 text-right text-slate-400 text-xs">{pctQtd.toFixed(1)}%</td>
                     <td className="p-3 text-right font-mono text-emerald-400">R$ {row.faturamento.toFixed(2)}</td>
-                    <td className="p-3 text-right text-slate-400 text-xs">{pctFat.toFixed(1)}%</td>
+                    <td className="p-3 text-right font-mono text-slate-400 text-xs">
+                      {row.taxaPercent > 0 ? `${row.taxaPercent.toFixed(2)}%` : '—'}
+                    </td>
+                    <td className="p-3 text-right font-mono text-red-400/90 text-xs">
+                      {row.valorTaxa > 0 ? `−R$ ${row.valorTaxa.toFixed(2)}` : '—'}
+                    </td>
+                    <td className="p-3 text-right font-mono text-amber-300">R$ {row.liquido.toFixed(2)}</td>
                   </tr>
                 );
               })}
@@ -598,9 +650,10 @@ function TabelaPagamentos({
                   Total
                 </td>
                 <td className="p-3 text-right font-mono text-indigo-300">{totalQtd}</td>
-                <td className="p-3 text-right">100%</td>
-                <td className="p-3 text-right font-mono text-emerald-400">R$ {totalFat.toFixed(2)}</td>
-                <td className="p-3 text-right">100%</td>
+                <td className="p-3 text-right font-mono text-emerald-400">R$ {totalBruto.toFixed(2)}</td>
+                <td className="p-3" />
+                <td className="p-3 text-right font-mono text-red-400/90 text-xs">−R$ {totalTaxas.toFixed(2)}</td>
+                <td className="p-3 text-right font-mono text-amber-300">R$ {totalLiquido.toFixed(2)}</td>
               </tr>
             </tfoot>
           </table>

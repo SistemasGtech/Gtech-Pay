@@ -32,11 +32,20 @@ export interface SenhaConfig {
   controleAtivo?: boolean;
 }
 
+/** Taxa % da maquininha sobre o valor da venda (comparar com extrato da adquirente). */
+export interface TaxasMaquininha {
+  pix: number;
+  cartaoDebito: number;
+  cartaoCredito: number;
+  dinheiro: number;
+}
+
 export interface LojaInfo {
   nome: string;
   endereco: string;
   telefone: string;
   cnpj: string;
+  taxasMaquininha?: TaxasMaquininha;
 }
 
 export interface Operador {

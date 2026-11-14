@@ -6,8 +6,10 @@ import type {
   LojaInfo,
   Operador,
   Produto,
+  TaxasMaquininha,
   Venda,
 } from '@gtech/shared';
+import { TAXAS_MAQUININHA_PADRAO } from '@gtech/shared';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -138,9 +140,16 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   }));
 
   const s = storeRes.data;
+  const taxasRaw = s.taxas_maquininha as Partial<TaxasMaquininha> | null | undefined;
   return {
     storeId,
-    loja: { nome: s.nome, endereco: s.endereco, telefone: s.telefone, cnpj: s.cnpj },
+    loja: {
+      nome: s.nome,
+      endereco: s.endereco,
+      telefone: s.telefone,
+      cnpj: s.cnpj,
+      taxasMaquininha: { ...TAXAS_MAQUININHA_PADRAO, ...(taxasRaw ?? {}) },
+    },
     operadores: (opRes.data ?? []).map(mapOperador),
     categorias: (catRes.data ?? []).map((c) => ({ id: c.id, nome: c.nome, cor: c.cor })),
     complementos,
@@ -162,19 +171,41 @@ function mapOperador(row: Record<string, unknown>): Operador {
   };
 }
 
+export class TaxasSalvasSoLocalError extends Error {
+  constructor() {
+    super('TAXAS_SALVAS_LOCAL');
+    this.name = 'TaxasSalvasSoLocalError';
+  }
+}
+
 export async function saveLojaRemote(storeId: string, loja: LojaInfo): Promise<void> {
   if (!supabase) return;
+  const updatedAt = new Date().toISOString();
+  const base = {
+    nome: loja.nome,
+    endereco: loja.endereco,
+    telefone: loja.telefone,
+    cnpj: loja.cnpj,
+    updated_at: updatedAt,
+  };
+
   const { error } = await supabase
     .from('stores')
     .update({
-      nome: loja.nome,
-      endereco: loja.endereco,
-      telefone: loja.telefone,
-      cnpj: loja.cnpj,
-      updated_at: new Date().toISOString(),
+      ...base,
+      taxas_maquininha: loja.taxasMaquininha ?? TAXAS_MAQUININHA_PADRAO,
     })
     .eq('id', storeId);
-  if (error) throw error;
+
+  if (!error) return;
+
+  if (/taxas_maquininha|column/i.test(error.message)) {
+    const { error: errBase } = await supabase.from('stores').update(base).eq('id', storeId);
+    if (errBase) throw errBase;
+    throw new TaxasSalvasSoLocalError();
+  }
+
+  throw error;
 }
 
 export async function saveOperadoresRemote(storeId: string, list: Operador[]): Promise<void> {

@@ -15,8 +15,11 @@ export function traduzirErro(mensagem: string): string {
   for (const [en, pt] of Object.entries(mapa)) {
     if (m.toLowerCase().includes(en.toLowerCase())) return pt;
   }
+  if (/taxas_maquininha/i.test(m)) {
+    return 'Coluna taxas_maquininha ausente: rode a migration 008 no Supabase (taxas ficam só neste navegador até lá).';
+  }
   if (/does not exist|relation .* does not exist|column .* does not exist/i.test(m)) {
-    return 'Banco desatualizado: aplique a migration 006 no Supabase (gestão de usuários).';
+    return 'Banco desatualizado: aplique as migrations pendentes no Supabase.';
   }
   if (/permission denied|row-level security|42501/i.test(m)) {
     return 'Sem permissão para ver usuários. Confirme que você é administrador da loja.';

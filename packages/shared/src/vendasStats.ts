@@ -1,5 +1,6 @@
 import { prioridadeMontagemGrupoNome } from './catalog';
-import type { Categoria, Complemento, FormaPagamento, Produto, Venda } from './types';
+import { TAXAS_MAQUININHA_PADRAO, taxasMaquininhaEfetivas } from './catalog';
+import type { Categoria, Complemento, FormaPagamento, LojaInfo, Produto, TaxasMaquininha, Venda } from './types';
 
 /** Data da venda a partir de timestamp ou string dd/mm/aaaa */
 export function vendaDate(v: Venda): Date {
@@ -449,12 +450,46 @@ const ORDEM_PAGAMENTO: FormaPagamento[] = ['PIX', 'Cartão Crédito', 'Cartão D
 export interface TipoPagamentoResumo {
   pagamento: string;
   quantidade: number;
+  /** Valor bruto transacionado (total das vendas). */
   faturamento: number;
+  taxaPercent: number;
+  valorTaxa: number;
+  /** Estimativa líquida após taxa da maquininha. */
+  liquido: number;
+}
+
+export function taxaPercentualMaquininha(pagamento: string, taxas: TaxasMaquininha = TAXAS_MAQUININHA_PADRAO): number {
+  const nome = (pagamento || '').trim();
+  if (nome === 'Cartão Débito') return Math.max(0, taxas.cartaoDebito);
+  if (nome === 'Cartão Crédito') return Math.max(0, taxas.cartaoCredito);
+  if (nome === 'PIX') return Math.max(0, taxas.pix);
+  if (nome === 'Dinheiro') return Math.max(0, taxas.dinheiro);
+  return 0;
+}
+
+function completarResumoPagamentoTaxas(row: Omit<TipoPagamentoResumo, 'taxaPercent' | 'valorTaxa' | 'liquido'>, taxas: TaxasMaquininha): TipoPagamentoResumo {
+  const taxaPercent = taxaPercentualMaquininha(row.pagamento, taxas);
+  const valorTaxa = row.faturamento * (taxaPercent / 100);
+  return {
+    ...row,
+    taxaPercent,
+    valorTaxa,
+    liquido: row.faturamento - valorTaxa,
+  };
 }
 
 /** Agrupa vendas do período por forma de pagamento (PIX, cartões, dinheiro). */
-export function relatorioTiposPagamento(vendas: Venda[]): TipoPagamentoResumo[] {
-  const map = new Map<string, TipoPagamentoResumo>();
+export function relatorioTiposPagamento(
+  vendas: Venda[],
+  taxasInput?: TaxasMaquininha | Pick<LojaInfo, 'taxasMaquininha'>,
+): TipoPagamentoResumo[] {
+  const taxas =
+    taxasInput && 'cartaoDebito' in taxasInput
+      ? taxasInput
+      : taxasInput
+        ? taxasMaquininhaEfetivas(taxasInput as Pick<LojaInfo, 'taxasMaquininha'>)
+        : TAXAS_MAQUININHA_PADRAO;
+  const map = new Map<string, Omit<TipoPagamentoResumo, 'taxaPercent' | 'valorTaxa' | 'liquido'>>();
 
   for (const venda of vendas) {
     const nome = (venda.pagamento || 'Outro').trim() || 'Outro';
@@ -468,7 +503,7 @@ export function relatorioTiposPagamento(vendas: Venda[]): TipoPagamentoResumo[] 
     }
   }
 
-  return [...map.values()].sort((a, b) => {
+  const ordenados = [...map.values()].sort((a, b) => {
     const ia = ORDEM_PAGAMENTO.indexOf(a.pagamento as FormaPagamento);
     const ib = ORDEM_PAGAMENTO.indexOf(b.pagamento as FormaPagamento);
     if (ia !== -1 || ib !== -1) {
@@ -478,4 +513,24 @@ export function relatorioTiposPagamento(vendas: Venda[]): TipoPagamentoResumo[] 
     }
     return b.faturamento - a.faturamento || a.pagamento.localeCompare(b.pagamento, 'pt-BR');
   });
+
+  return ordenados.map((row) => completarResumoPagamentoTaxas(row, taxas));
+}
+
+export interface FaturamentoBrutoLiquido {
+  bruto: number;
+  taxas: number;
+  liquido: number;
+}
+
+/** Bruto = vendas; líquido = bruto menos taxas da maquininha (débito/crédito). */
+export function faturamentoBrutoLiquido(
+  vendas: Venda[],
+  taxasInput?: TaxasMaquininha | Pick<LojaInfo, 'taxasMaquininha'>,
+): FaturamentoBrutoLiquido {
+  const rows = relatorioTiposPagamento(vendas, taxasInput);
+  const bruto = rows.reduce((s, r) => s + r.faturamento, 0);
+  const taxas = rows.reduce((s, r) => s + r.valorTaxa, 0);
+  const liquido = rows.reduce((s, r) => s + r.liquido, 0);
+  return { bruto, taxas, liquido };
 }

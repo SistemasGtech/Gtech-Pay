@@ -5,6 +5,7 @@ import {
   loadCategorias,
   loadComplementos,
   loadLoja,
+  mergeLojaTaxasMaquininha,
   loadProdutos,
   loadVendas,
   saveCategorias,
@@ -20,6 +21,7 @@ import {
   saveCategoriasRemote,
   saveComplementosRemote,
   saveLojaRemote,
+  TaxasSalvasSoLocalError,
   saveProdutosRemote,
 } from './lib/supabaseApi';
 import { OverviewPage } from './pages/OverviewPage';
@@ -70,7 +72,9 @@ function App() {
     if (isSupabaseEnabled) {
       const d = await fetchDashboardData();
       setStoreId(d.storeId);
-      setLoja(d.loja);
+      const lojaMesclada = mergeLojaTaxasMaquininha(d.loja);
+      setLoja(lojaMesclada);
+      saveLoja(lojaMesclada);
       setCategorias(d.categorias);
       setComplementos(d.complementos);
       setProdutos(d.produtos);
@@ -141,6 +145,10 @@ function App() {
         await remote();
         notify(`${label} (nuvem)`);
       } catch (e) {
+        if (e instanceof TaxasSalvasSoLocalError) {
+          notify('Taxas salvas neste navegador. Aplique a migration 008_taxas_maquininha no Supabase para gravar na nuvem.');
+          return;
+        }
         notify(traduzirErro(e instanceof Error ? e.message : 'Erro ao salvar na nuvem'));
       }
     } else {
@@ -228,7 +236,7 @@ function App() {
         </header>
 
         <main className="flex-1 p-4 md:p-8 overflow-y-auto custom-scroll">
-          {nav === 'overview' && <OverviewPage vendas={vendas} />}
+          {nav === 'overview' && <OverviewPage vendas={vendas} loja={loja} />}
           {nav === 'usuarios' && (
             <UsuariosPage storeId={storeId} cloud={isSupabaseEnabled} onNotify={notify} />
           )}
@@ -273,6 +281,14 @@ function App() {
               produtos={produtos}
               categorias={categorias}
               complementos={complementos}
+              loja={loja}
+              onSaveTaxasMaquininha={(taxas) => {
+                const next = { ...loja, taxasMaquininha: taxas };
+                void persist('Taxas da maquininha salvas', () => {
+                  setLoja(next);
+                  saveLoja(next);
+                }, () => saveLojaRemote(storeId!, next));
+              }}
               onChange={() => void refreshVendas()}
               onDelete={async (id) => {
                 if (isSupabaseEnabled) await deleteVendaRemote(id);

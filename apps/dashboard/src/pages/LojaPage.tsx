@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { LojaInfo } from '@gtech/shared';
+import type { LojaInfo, TaxasMaquininha } from '@gtech/shared';
+import { taxasMaquininhaEfetivas } from '@gtech/shared';
+import { TaxaMaquininhaInput } from '../components/TaxaMaquininhaInput';
 
 type Props = {
   loja: LojaInfo;
@@ -62,6 +64,36 @@ export function LojaPage({ loja, storeId, cloud, onSave }: Props) {
             />
           </div>
         ))}
+        <fieldset className="border border-slate-800 rounded-xl p-4 space-y-3">
+          <legend className="text-[10px] font-bold uppercase text-slate-500 px-1">Taxas da maquininha (%)</legend>
+          <p className="text-xs text-slate-400 -mt-1">
+            Só cartão débito e crédito. PIX e dinheiro entram sem taxa no histórico.
+          </p>
+          <TaxaMaquininhaInput
+            label="Cartão débito"
+            value={taxasMaquininhaEfetivas(form).cartaoDebito}
+            resetKey={`${form.taxasMaquininha?.cartaoDebito}-${form.taxasMaquininha?.cartaoCredito}`}
+            onChange={(v) => {
+              const base = taxasMaquininhaEfetivas(form);
+              setForm({
+                ...form,
+                taxasMaquininha: { ...base, cartaoDebito: v } satisfies TaxasMaquininha,
+              });
+            }}
+          />
+          <TaxaMaquininhaInput
+            label="Cartão crédito"
+            value={taxasMaquininhaEfetivas(form).cartaoCredito}
+            resetKey={`${form.taxasMaquininha?.cartaoDebito}-${form.taxasMaquininha?.cartaoCredito}`}
+            onChange={(v) => {
+              const base = taxasMaquininhaEfetivas(form);
+              setForm({
+                ...form,
+                taxasMaquininha: { ...base, cartaoCredito: v } satisfies TaxasMaquininha,
+              });
+            }}
+          />
+        </fieldset>
         <button type="submit" className="w-full py-2.5 bg-emerald-600 rounded-xl font-bold text-sm">
           Salvar loja
         </button>

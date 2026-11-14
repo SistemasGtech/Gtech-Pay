@@ -4,8 +4,16 @@ import type {
   LojaInfo,
   Operador,
   Produto,
+  TaxasMaquininha,
   Venda,
 } from './types';
+
+export const TAXAS_MAQUININHA_PADRAO: TaxasMaquininha = {
+  pix: 0,
+  cartaoDebito: 0,
+  cartaoCredito: 0,
+  dinheiro: 0,
+};
 
 export const STORAGE_KEYS = {
   loja: 'gtech_loja',
@@ -97,8 +105,58 @@ export function newId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
+export function taxasMaquininhaEfetivas(loja: Pick<LojaInfo, 'taxasMaquininha'>): TaxasMaquininha {
+  return { ...TAXAS_MAQUININHA_PADRAO, ...loja.taxasMaquininha };
+}
+
+/** Aceita "1,21" ou "1.21" (percentual da maquininha). */
+export function parseTaxaPercentBr(input: string): number {
+  let s = input.trim().replace(/[^\d,.]/g, '');
+  if (!s) return 0;
+
+  let n: number;
+  if (s.includes(',')) {
+    const [intRaw, decRaw = ''] = s.split(',');
+    const intPart = intRaw.replace(/\./g, '');
+    const decPart = decRaw.replace(/\D/g, '').slice(0, 4);
+    n = decPart ? parseFloat(`${intPart || '0'}.${decPart}`) : parseFloat(intPart || '0');
+  } else {
+    n = parseFloat(s);
+  }
+
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(100, Math.max(0, n));
+}
+
+export function formatTaxaPercentBr(value: number): string {
+  if (value === 0) return '';
+  return value.toLocaleString('pt-BR', { maximumFractionDigits: 4, useGrouping: false });
+}
+
+function taxasTemValor(taxas: TaxasMaquininha): boolean {
+  return taxas.cartaoDebito > 0 || taxas.cartaoCredito > 0;
+}
+
+/** Evita que o sync da nuvem zere taxas salvas só no navegador. */
+export function mergeLojaTaxasMaquininha(lojaNuvem: LojaInfo, lojaLocal?: LojaInfo): LojaInfo {
+  const cloud = taxasMaquininhaEfetivas(lojaNuvem);
+  const local = taxasMaquininhaEfetivas(lojaLocal ?? loadLoja());
+  if (taxasTemValor(cloud)) {
+    return { ...lojaNuvem, taxasMaquininha: cloud };
+  }
+  if (taxasTemValor(local)) {
+    return { ...lojaNuvem, taxasMaquininha: local };
+  }
+  return { ...lojaNuvem, taxasMaquininha: cloud };
+}
+
 export function loadLoja(): LojaInfo {
-  return { ...LOJA_PADRAO, ...readJson<Partial<LojaInfo>>(STORAGE_KEYS.loja, {}) };
+  const raw = readJson<Partial<LojaInfo>>(STORAGE_KEYS.loja, {});
+  return {
+    ...LOJA_PADRAO,
+    ...raw,
+    taxasMaquininha: { ...TAXAS_MAQUININHA_PADRAO, ...raw.taxasMaquininha },
+  };
 }
 
 export function saveLoja(loja: LojaInfo): void {
