@@ -2,5 +2,5 @@
   "versionCode": 28,
   "versionName": "1.0.28",
   "apkUrl": "https://github.com/SistemasGtech/Gtech-Pay/releases/download/pdv-1.0.28/app-debug.apk",
-  "notes": "Dashboard: abas Itens e Tipos de pagamento (dia/mes/ano) no historico. PDV: impressao Bluetooth mais rapida e feedback Imprimindo."
+  "notes": "Dashboard Historico: filtro por dia na lista de vendas, blocos minimizados ao abrir, meses concluidos em Tipos de pagamento (inclui mes atual). PDV: impressao Bluetooth mais rapida."
 }

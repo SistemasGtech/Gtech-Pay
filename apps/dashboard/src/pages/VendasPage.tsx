@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Categoria, Complemento, LojaInfo, Produto, TaxasMaquininha, TipoPagamentoResumo, Venda } from '@gtech/shared';
+import type {
+  Categoria,
+  Complemento,
+  LojaInfo,
+  MesConcluidoResumo,
+  Produto,
+  TaxasMaquininha,
+  TipoPagamentoResumo,
+  Venda,
+} from '@gtech/shared';
 import { taxasMaquininhaEfetivas } from '@gtech/shared';
 import { TaxaMaquininhaInput } from '../components/TaxaMaquininhaInput';
 import {
   relatorioComplementosSaboresMesAno,
   relatorioItensComComplementosPorCategoria,
+  relatorioMesesConcluidos,
   relatorioTiposPagamento,
   resumoVendas,
   totalFaturamento,
@@ -61,12 +71,13 @@ function tituloPeriodo(periodo: PeriodoRelatorio, dataRef: Date, labelMes: strin
 
 export function VendasPage({ vendas, produtos, categorias, complementos, loja, onSaveTaxasMaquininha, onChange, onDelete }: Props) {
   const [busca, setBusca] = useState('');
+  const [filtroDiaLista, setFiltroDiaLista] = useState('');
   const [periodoRelatorio, setPeriodoRelatorio] = useState<PeriodoRelatorio>('mes');
   const [dataRefIso, setDataRefIso] = useState(hojeIso);
   const [listaExpandida, setListaExpandida] = useState(false);
   const [aba, setAba] = useState<AbaHistorico>('itens');
-  const [relatorioItensExpandido, setRelatorioItensExpandido] = useState(true);
-  const [relatorioComplementosExpandido, setRelatorioComplementosExpandido] = useState(true);
+  const [relatorioItensExpandido, setRelatorioItensExpandido] = useState(false);
+  const [relatorioComplementosExpandido, setRelatorioComplementosExpandido] = useState(false);
   const [categoriasMinimizadas, setCategoriasMinimizadas] = useState<Record<string, boolean>>({});
   const [itensMinimizados, setItensMinimizados] = useState<Record<string, boolean>>({});
   const [taxasForm, setTaxasForm] = useState<TaxasMaquininha>(() => taxasMaquininhaEfetivas(loja));
@@ -100,13 +111,17 @@ export function VendasPage({ vendas, produtos, categorias, complementos, loja, o
     () => relatorioTiposPagamento(vendasDoAno(vendas, dataRef), taxasForm),
     [vendas, dataRefIso, taxasForm],
   );
+  const mesesConcluidos = useMemo(
+    () => relatorioMesesConcluidos(vendas, taxasForm, dataRef),
+    [vendas, dataRefIso, taxasForm],
+  );
 
   const toggleCategoriaMinimizada = (id: string) => {
-    setCategoriasMinimizadas((prev) => ({ ...prev, [id]: !prev[id] }));
+    setCategoriasMinimizadas((prev) => ({ ...prev, [id]: !(prev[id] ?? true) }));
   };
 
   const toggleItemMinimizado = (chave: string) => {
-    setItensMinimizados((prev) => ({ ...prev, [chave]: !prev[chave] }));
+    setItensMinimizados((prev) => ({ ...prev, [chave]: !(prev[chave] ?? true) }));
   };
   const saboresRelatorio = useMemo(() => relatorioComplementosSaboresMesAno(vendas, dataRef), [vendas, dataRefIso]);
   const totalQtdRelatorio = totalItensVendidos(vendasParaRelatorio);
@@ -117,12 +132,23 @@ export function VendasPage({ vendas, produtos, categorias, complementos, loja, o
   const titulo = tituloPeriodo(periodoRelatorio, dataRef, resumo.labelMes);
 
   const filtradas = useMemo(() => {
-    const noPeriodo = vendasNoPeriodo(vendas, periodoRelatorio, dataRef);
-    const ordenadas = [...noPeriodo].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    const base = filtroDiaLista.trim()
+      ? vendasDoDia(vendas, parseDataRef(filtroDiaLista))
+      : vendasNoPeriodo(vendas, periodoRelatorio, dataRef);
+    const ordenadas = [...base].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     if (!busca.trim()) return ordenadas;
     const t = busca.toLowerCase();
     return ordenadas.filter((v) => v.senha.includes(t) || v.operadorNome?.toLowerCase().includes(t));
-  }, [vendas, periodoRelatorio, dataRefIso, busca]);
+  }, [vendas, periodoRelatorio, dataRefIso, busca, filtroDiaLista]);
+
+  const tituloLista = filtroDiaLista.trim()
+    ? parseDataRef(filtroDiaLista).toLocaleDateString('pt-BR', {
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      })
+    : titulo;
 
   const ultimasDatas = useMemo(() => {
     const set = new Set<string>();
@@ -253,7 +279,7 @@ export function VendasPage({ vendas, produtos, categorias, complementos, loja, o
           ) : (
             <div className="divide-y divide-slate-800">
               {relatorioPorCategoria.map((cat) => {
-                const catMin = Boolean(categoriasMinimizadas[cat.categoriaId]);
+                const catMin = categoriasMinimizadas[cat.categoriaId] ?? true;
                 return (
                   <div key={cat.categoriaId} className="bg-slate-900/50">
                     <div className="p-3 md:p-4 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 bg-slate-950/40">
@@ -284,7 +310,7 @@ export function VendasPage({ vendas, produtos, categorias, complementos, loja, o
                       <div className="divide-y divide-slate-800/80">
                         {cat.itens.map((item, itemIdx) => {
                           const pctItem = cat.totalItensQtd ? (item.quantidade / cat.totalItensQtd) * 100 : 0;
-                          const itemMin = Boolean(itensMinimizados[item.chave]);
+                          const itemMin = itensMinimizados[item.chave] ?? true;
                           return (
                             <div key={item.chave} className="p-4 space-y-3">
                               <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -407,6 +433,7 @@ export function VendasPage({ vendas, produtos, categorias, complementos, loja, o
           <TabelaPagamentos titulo="Dia" rows={pagamentosDia} />
           <TabelaPagamentos titulo="Mês" rows={pagamentosMes} />
           <TabelaPagamentos titulo="Ano" rows={pagamentosAno} />
+          <TabelaMesesConcluidos rows={mesesConcluidos} mesAtualLabel={resumo.labelMes} />
         </div>
       )}
 
@@ -495,8 +522,8 @@ export function VendasPage({ vendas, produtos, categorias, complementos, loja, o
         >
           <div>
             <h2 className="text-sm font-black text-white">Lista de vendas</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              {filtradas.length} {filtradas.length === 1 ? 'venda' : 'vendas'} · {titulo}
+            <p className="text-xs text-slate-400 mt-0.5 capitalize">
+              {filtradas.length} {filtradas.length === 1 ? 'venda' : 'vendas'} · {tituloLista}
               {!listaExpandida && ' · toque para expandir'}
             </p>
           </div>
@@ -507,12 +534,63 @@ export function VendasPage({ vendas, produtos, categorias, complementos, loja, o
 
         {listaExpandida && (
           <div className="border-t border-slate-800 p-4 space-y-3">
-            <input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar senha ou operador..."
-              className="w-full max-w-md bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm"
-            />
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
+              <div className="flex-1 min-w-[12rem] max-w-md">
+                <label className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Busca</label>
+                <input
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  placeholder="Senha ou operador..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Dia</label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={filtroDiaLista}
+                    onChange={(e) => setFiltroDiaLista(e.target.value)}
+                    className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setFiltroDiaLista(hojeIso())}
+                    className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-700 text-slate-300 hover:border-indigo-600 hover:text-indigo-300"
+                  >
+                    Hoje
+                  </button>
+                  {filtroDiaLista && (
+                    <button
+                      type="button"
+                      onClick={() => setFiltroDiaLista('')}
+                      className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-800 text-slate-500 hover:text-slate-300"
+                    >
+                      Todos do período
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+            {ultimasDatas.length > 0 && (
+              <div className="flex flex-wrap gap-1 items-center">
+                <span className="text-[10px] text-slate-500 font-bold uppercase">Dias recentes:</span>
+                {ultimasDatas.map((iso) => (
+                  <button
+                    key={`lista-${iso}`}
+                    type="button"
+                    onClick={() => setFiltroDiaLista(iso)}
+                    className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${
+                      filtroDiaLista === iso
+                        ? 'border-indigo-500 text-indigo-300 bg-indigo-950/40'
+                        : 'border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {parseDataRef(iso).toLocaleDateString('pt-BR')}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="overflow-x-auto rounded-xl border border-slate-800">
               <table className="w-full text-sm">
                 <thead className="bg-slate-950 text-slate-400 text-left">
@@ -576,6 +654,77 @@ export function VendasPage({ vendas, produtos, categorias, complementos, loja, o
         </>
       )}
     </div>
+  );
+}
+
+function TabelaMesesConcluidos({ rows, mesAtualLabel }: { rows: MesConcluidoResumo[]; mesAtualLabel: string }) {
+  const totalQtd = rows.reduce((s, r) => s + r.quantidade, 0);
+  const totalBruto = rows.reduce((s, r) => s + r.bruto, 0);
+  const totalTaxas = rows.reduce((s, r) => s + r.taxas, 0);
+  const totalLiquido = rows.reduce((s, r) => s + r.liquido, 0);
+
+  return (
+    <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+      <div className="p-4 border-b border-slate-800">
+        <h2 className="text-sm font-black text-white">Meses concluídos</h2>
+        <p className="text-xs text-slate-400 mt-0.5 capitalize">
+          Até {mesAtualLabel} (inclui o mês atual) · faturamento bruto e líquido (taxas da maquininha)
+        </p>
+        {rows.length > 0 && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-bold">
+            <span className="text-indigo-300">
+              {totalQtd} {totalQtd === 1 ? 'venda' : 'vendas'} no período
+            </span>
+            <span className="text-emerald-400">Bruto R$ {totalBruto.toFixed(2)}</span>
+            <span className="text-red-400/90">Taxas −R$ {totalTaxas.toFixed(2)}</span>
+            <span className="text-amber-300">Líquido R$ {totalLiquido.toFixed(2)}</span>
+          </div>
+        )}
+      </div>
+      {rows.length === 0 ? (
+        <p className="p-6 text-sm text-slate-500 text-center">Nenhum mês com vendas no histórico até a data de referência.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-950 text-slate-400 text-left">
+              <tr>
+                <th className="p-3">#</th>
+                <th className="p-3">Mês</th>
+                <th className="p-3 text-right">Vendas</th>
+                <th className="p-3 text-right">Bruto</th>
+                <th className="p-3 text-right">Taxas</th>
+                <th className="p-3 text-right">Líquido</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {rows.map((row, idx) => (
+                <tr key={`${row.ano}-${row.mes}`} className="hover:bg-slate-800/40">
+                  <td className="p-3 text-slate-500 font-mono text-xs">{idx + 1}</td>
+                  <td className="p-3 font-bold capitalize">{row.label}</td>
+                  <td className="p-3 text-right font-mono text-indigo-300">{row.quantidade}</td>
+                  <td className="p-3 text-right font-mono text-emerald-400">R$ {row.bruto.toFixed(2)}</td>
+                  <td className="p-3 text-right font-mono text-red-400/90 text-xs">
+                    −R$ {row.taxas.toFixed(2)}
+                  </td>
+                  <td className="p-3 text-right font-mono text-amber-300">R$ {row.liquido.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-slate-950 border-t border-slate-700 text-sm font-black">
+              <tr>
+                <td className="p-3" colSpan={2}>
+                  Total ({rows.length} {rows.length === 1 ? 'mês' : 'meses'})
+                </td>
+                <td className="p-3 text-right font-mono text-indigo-300">{totalQtd}</td>
+                <td className="p-3 text-right font-mono text-emerald-400">R$ {totalBruto.toFixed(2)}</td>
+                <td className="p-3 text-right font-mono text-red-400/90 text-xs">−R$ {totalTaxas.toFixed(2)}</td>
+                <td className="p-3 text-right font-mono text-amber-300">R$ {totalLiquido.toFixed(2)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 

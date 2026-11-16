@@ -534,3 +534,58 @@ export function faturamentoBrutoLiquido(
   const liquido = rows.reduce((s, r) => s + r.liquido, 0);
   return { bruto, taxas, liquido };
 }
+
+export interface MesConcluidoResumo {
+  ano: number;
+  /** 0 = janeiro */
+  mes: number;
+  label: string;
+  quantidade: number;
+  bruto: number;
+  taxas: number;
+  liquido: number;
+}
+
+/** Meses de calendário até o mês de `dataRef` (inclui o mês atual), com faturamento bruto/líquido. */
+export function relatorioMesesConcluidos(
+  vendas: Venda[],
+  taxasInput?: TaxasMaquininha | Pick<LojaInfo, 'taxasMaquininha'>,
+  dataRef = new Date(),
+): MesConcluidoResumo[] {
+  const refY = dataRef.getFullYear();
+  const refM = dataRef.getMonth();
+  const porMes = new Map<string, Venda[]>();
+
+  for (const v of vendas) {
+    const d = vendaDate(v);
+    if (Number.isNaN(d.getTime())) continue;
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    if (y > refY || (y === refY && m > refM)) continue;
+
+    const key = `${y}-${String(m + 1).padStart(2, '0')}`;
+    const list = porMes.get(key);
+    if (list) list.push(v);
+    else porMes.set(key, [v]);
+  }
+
+  const resultado: MesConcluidoResumo[] = [];
+  for (const [key, list] of porMes) {
+    const [ys, ms] = key.split('-').map(Number);
+    if (!ys || !ms) continue;
+    const refMes = new Date(ys, ms - 1, 1);
+    const { bruto, taxas, liquido } = faturamentoBrutoLiquido(list, taxasInput);
+    resultado.push({
+      ano: ys,
+      mes: ms - 1,
+      label: refMes.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
+      quantidade: list.length,
+      bruto,
+      taxas,
+      liquido,
+    });
+  }
+
+  resultado.sort((a, b) => b.ano - a.ano || b.mes - a.mes);
+  return resultado;
+}
