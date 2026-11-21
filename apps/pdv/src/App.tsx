@@ -442,8 +442,14 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if ((tab !== 'recibos' && tab !== 'resumo') || !isPdvCloudEnabled || !storeId || !isOnline()) return;
-    void refreshVendasFromCloud(storeId);
+    if ((tab !== 'recibos' && tab !== 'resumo') || !isPdvCloudEnabled || !storeId) return;
+    const pull = () => {
+      if (!isOnline()) return;
+      void refreshVendasFromCloud(storeId);
+    };
+    pull();
+    const id = window.setInterval(pull, 30_000);
+    return () => window.clearInterval(id);
   }, [tab, storeId, refreshVendasFromCloud]);
 
   const newCarrinhoItemId = () => (isPdvCloudEnabled ? crypto.randomUUID() : String(Date.now() + Math.random()));

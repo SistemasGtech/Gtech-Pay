@@ -61,7 +61,9 @@ export interface ResumoVendasPeriodo {
   faturamentoDiario: number;
   faturamentoMensal: number;
   faturamentoAnual: number;
+  itensVendidosDia: number;
   itensVendidosMes: number;
+  itensVendidosAno: number;
   vendasHoje: number;
   vendasMes: number;
 }
@@ -77,7 +79,9 @@ export function resumoVendas(vendas: Venda[], dataRef = new Date()): ResumoVenda
     faturamentoDiario: totalFaturamento(hoje),
     faturamentoMensal: totalFaturamento(mes),
     faturamentoAnual: totalFaturamento(ano),
+    itensVendidosDia: totalItensVendidos(hoje),
     itensVendidosMes: totalItensVendidos(mes),
+    itensVendidosAno: totalItensVendidos(ano),
     vendasHoje: hoje.length,
     vendasMes: mes.length,
   };
@@ -439,6 +443,207 @@ export function relatorioItensComComplementosPorCategoria(
       itens: itensCat,
       totalItensQtd: itensCat.reduce((s, i) => s + i.quantidade, 0),
       totalFaturamento: itensCat.reduce((s, i) => s + i.faturamento, 0),
+    });
+  }
+
+  return resultado;
+}
+
+export interface OpcaoComplementoDiaMesAno {
+  opcaoId: string;
+  nome: string;
+  quantidadeDia: number;
+  quantidadeMes: number;
+  quantidadeAno: number;
+}
+
+export interface GrupoComplementoDiaMesAno {
+  grupoId: string;
+  grupoNome: string;
+  opcoes: OpcaoComplementoDiaMesAno[];
+  totalDia: number;
+  totalMes: number;
+  totalAno: number;
+}
+
+export interface ItemVendidoDiaMesAno {
+  chave: string;
+  nome: string;
+  quantidadeDia: number;
+  quantidadeMes: number;
+  quantidadeAno: number;
+  faturamentoDia: number;
+  faturamentoMes: number;
+  faturamentoAno: number;
+  gruposComplemento: GrupoComplementoDiaMesAno[];
+}
+
+export interface RelatorioCategoriaDiaMesAno {
+  categoriaId: string;
+  categoriaNome: string;
+  cor: string;
+  itens: ItemVendidoDiaMesAno[];
+  totalDia: number;
+  totalMes: number;
+  totalAno: number;
+  faturamentoDia: number;
+  faturamentoMes: number;
+  faturamentoAno: number;
+}
+
+function mergeOpcoesDiaMesAno(
+  dia?: GrupoComplementoVendido,
+  mes?: GrupoComplementoVendido,
+  ano?: GrupoComplementoVendido,
+): OpcaoComplementoDiaMesAno[] {
+  const ordem: string[] = [];
+  const vistos = new Set<string>();
+  for (const grupo of [ano, mes, dia]) {
+    for (const op of grupo?.opcoes ?? []) {
+      if (vistos.has(op.opcaoId)) continue;
+      vistos.add(op.opcaoId);
+      ordem.push(op.opcaoId);
+    }
+  }
+  const porDia = new Map((dia?.opcoes ?? []).map((o) => [o.opcaoId, o]));
+  const porMes = new Map((mes?.opcoes ?? []).map((o) => [o.opcaoId, o]));
+  const porAno = new Map((ano?.opcoes ?? []).map((o) => [o.opcaoId, o]));
+
+  return ordem
+    .map((id) => ({
+      opcaoId: id,
+      nome: porAno.get(id)?.nome ?? porMes.get(id)?.nome ?? porDia.get(id)?.nome ?? id,
+      quantidadeDia: porDia.get(id)?.quantidade ?? 0,
+      quantidadeMes: porMes.get(id)?.quantidade ?? 0,
+      quantidadeAno: porAno.get(id)?.quantidade ?? 0,
+    }))
+    .sort(
+      (a, b) =>
+        b.quantidadeAno - a.quantidadeAno ||
+        b.quantidadeMes - a.quantidadeMes ||
+        b.quantidadeDia - a.quantidadeDia ||
+        a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }),
+    );
+}
+
+function mergeGruposDiaMesAno(
+  dia: GrupoComplementoVendido[],
+  mes: GrupoComplementoVendido[],
+  ano: GrupoComplementoVendido[],
+): GrupoComplementoDiaMesAno[] {
+  const porDia = new Map(dia.map((g) => [g.grupoId, g]));
+  const porMes = new Map(mes.map((g) => [g.grupoId, g]));
+  const porAno = new Map(ano.map((g) => [g.grupoId, g]));
+  const ids: string[] = [];
+  const vistos = new Set<string>();
+  for (const lista of [ano, mes, dia]) {
+    for (const g of lista) {
+      if (vistos.has(g.grupoId)) continue;
+      vistos.add(g.grupoId);
+      ids.push(g.grupoId);
+    }
+  }
+
+  return ids
+    .map((id) => {
+      const base = porAno.get(id) ?? porMes.get(id) ?? porDia.get(id)!;
+      const opcoes = mergeOpcoesDiaMesAno(porDia.get(id), porMes.get(id), porAno.get(id));
+      return {
+        grupoId: id,
+        grupoNome: base.grupoNome,
+        opcoes,
+        totalDia: opcoes.reduce((s, o) => s + o.quantidadeDia, 0),
+        totalMes: opcoes.reduce((s, o) => s + o.quantidadeMes, 0),
+        totalAno: opcoes.reduce((s, o) => s + o.quantidadeAno, 0),
+      };
+    })
+    .filter((g) => g.totalDia + g.totalMes + g.totalAno > 0);
+}
+
+/** Cada item do catálogo com quantidade e faturamento do dia, do mês e do ano de referência. */
+export function relatorioItensDiaMesAnoPorCategoria(
+  vendas: Venda[],
+  complementos: Complemento[],
+  produtos: Produto[],
+  categorias: Categoria[],
+  dataRef = new Date(),
+): RelatorioCategoriaDiaMesAno[] {
+  const args = [complementos, produtos, categorias] as const;
+  const dia = relatorioItensComComplementosPorCategoria(vendasDoDia(vendas, dataRef), ...args);
+  const mes = relatorioItensComComplementosPorCategoria(vendasDoMes(vendas, dataRef), ...args);
+  const ano = relatorioItensComComplementosPorCategoria(vendasDoAno(vendas, dataRef), ...args);
+
+  const porDia = new Map(dia.map((c) => [c.categoriaId, c]));
+  const porMes = new Map(mes.map((c) => [c.categoriaId, c]));
+  const porAno = new Map(ano.map((c) => [c.categoriaId, c]));
+
+  const ids: string[] = [];
+  const vistos = new Set<string>();
+  for (const id of categorias.map((c) => c.id)) {
+    if (porDia.has(id) || porMes.has(id) || porAno.has(id)) {
+      ids.push(id);
+      vistos.add(id);
+    }
+  }
+  for (const lista of [ano, mes, dia]) {
+    for (const c of lista) {
+      if (vistos.has(c.categoriaId)) continue;
+      vistos.add(c.categoriaId);
+      ids.push(c.categoriaId);
+    }
+  }
+
+  const ordemProduto = new Map<string, number>();
+  produtos.forEach((p, index) => ordemProduto.set(`${p.categoriaId}:${p.id}`, index));
+
+  const resultado: RelatorioCategoriaDiaMesAno[] = [];
+  for (const categoriaId of ids) {
+    const base = porAno.get(categoriaId) ?? porMes.get(categoriaId) ?? porDia.get(categoriaId)!;
+    const itensDia = new Map((porDia.get(categoriaId)?.itens ?? []).map((i) => [i.chave, i]));
+    const itensMes = new Map((porMes.get(categoriaId)?.itens ?? []).map((i) => [i.chave, i]));
+    const itensAno = new Map((porAno.get(categoriaId)?.itens ?? []).map((i) => [i.chave, i]));
+    const chaves = new Set([...itensDia.keys(), ...itensMes.keys(), ...itensAno.keys()]);
+
+    const itens: ItemVendidoDiaMesAno[] = [...chaves]
+      .map((chave) => {
+        const d = itensDia.get(chave);
+        const m = itensMes.get(chave);
+        const a = itensAno.get(chave);
+        const ref = a ?? m ?? d!;
+        return {
+          chave,
+          nome: ref.nome,
+          quantidadeDia: d?.quantidade ?? 0,
+          quantidadeMes: m?.quantidade ?? 0,
+          quantidadeAno: a?.quantidade ?? 0,
+          faturamentoDia: d?.faturamento ?? 0,
+          faturamentoMes: m?.faturamento ?? 0,
+          faturamentoAno: a?.faturamento ?? 0,
+          gruposComplemento: mergeGruposDiaMesAno(
+            d?.gruposComplemento ?? [],
+            m?.gruposComplemento ?? [],
+            a?.gruposComplemento ?? [],
+          ),
+        };
+      })
+      .sort((a, b) => {
+        const oa = ordemProduto.get(`${categoriaId}:${a.chave}`) ?? 9999;
+        const ob = ordemProduto.get(`${categoriaId}:${b.chave}`) ?? 9999;
+        if (oa !== ob) return oa - ob;
+        return b.quantidadeAno - a.quantidadeAno || b.quantidadeMes - a.quantidadeMes || a.nome.localeCompare(b.nome, 'pt-BR');
+      });
+
+    resultado.push({
+      categoriaId,
+      categoriaNome: base.categoriaNome,
+      cor: base.cor,
+      itens,
+      totalDia: itens.reduce((s, i) => s + i.quantidadeDia, 0),
+      totalMes: itens.reduce((s, i) => s + i.quantidadeMes, 0),
+      totalAno: itens.reduce((s, i) => s + i.quantidadeAno, 0),
+      faturamentoDia: itens.reduce((s, i) => s + i.faturamentoDia, 0),
+      faturamentoMes: itens.reduce((s, i) => s + i.faturamentoMes, 0),
+      faturamentoAno: itens.reduce((s, i) => s + i.faturamentoAno, 0),
     });
   }
 

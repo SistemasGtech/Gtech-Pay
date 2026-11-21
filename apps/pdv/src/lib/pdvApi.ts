@@ -159,7 +159,10 @@ function mapVendas(raw: unknown): Venda[] {
   });
 }
 
-export async function fetchPdvVendas(storeId: string, limit = 100): Promise<Venda[]> {
+/** Histórico pedido ao servidor. O dia cheio passa de 100 vendas; o RPC também impõe esse piso. */
+export const PDV_SALES_FETCH_LIMIT = 5000;
+
+export async function fetchPdvVendas(storeId: string, limit = PDV_SALES_FETCH_LIMIT): Promise<Venda[]> {
   if (!supabase) throw new Error('Supabase não configurado no PDV');
   const { data, error } = await supabase.rpc('pdv_list_sales', { p_store_id: storeId, p_limit: limit });
   if (error) throw error;
@@ -172,7 +175,7 @@ export async function fetchPdvBootstrap(storeId: string): Promise<PdvBootstrap> 
   const [configRes, catalogRes, vendasRes] = await Promise.all([
     supabase.rpc('pdv_get_config', { p_store_id: storeId }),
     supabase.rpc('pdv_get_catalog', { p_store_id: storeId }),
-    supabase.rpc('pdv_list_sales', { p_store_id: storeId, p_limit: 100 }),
+    supabase.rpc('pdv_list_sales', { p_store_id: storeId, p_limit: PDV_SALES_FETCH_LIMIT }),
   ]);
 
   if (configRes.error) throw configRes.error;

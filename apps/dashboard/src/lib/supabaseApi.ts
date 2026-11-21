@@ -392,19 +392,43 @@ export async function registerStoreUser(
   const ephemeral = createClient(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
-  const { error } = await ephemeral.auth.signUp({
+  const { data, error } = await ephemeral.auth.signUp({
     email: email.trim(),
     password,
     options: { data: { invite_token: invite.token } },
   });
   if (error) {
     const msg = supabaseErrMsg(error);
-    if (/already registered|already exists|User already registered/i.test(msg)) {
+    if (usuarioAuthJaExiste(msg)) {
       await attachStoreMemberByEmail(email, role);
       return;
     }
+    if (limiteEnvioEmail(msg)) {
+      try {
+        await attachStoreMemberByEmail(email, role);
+        return;
+      } catch (attachErr) {
+        const attachMsg = attachErr instanceof Error ? attachErr.message : '';
+        if (/não encontrado/i.test(attachMsg)) {
+          throw new Error('Muitos e-mails em sequência. Espere um minuto e tente de novo.');
+        }
+        throw attachErr;
+      }
+    }
     throw new Error(msg);
   }
+  // Com confirmação de e-mail ligada, um e-mail já cadastrado volta sem erro e sem identidade nova.
+  if (data.user && (data.user.identities?.length ?? 0) === 0) {
+    await attachStoreMemberByEmail(email, role);
+  }
+}
+
+function usuarioAuthJaExiste(msg: string): boolean {
+  return /already registered|already exists|User already registered/i.test(msg);
+}
+
+function limiteEnvioEmail(msg: string): boolean {
+  return /over_email_send_rate_limit|only request this after|email rate limit|rate limit/i.test(msg);
 }
 
 /** Usuário já existe no Auth (ex.: criado no painel Supabase) — vincula à loja atual */

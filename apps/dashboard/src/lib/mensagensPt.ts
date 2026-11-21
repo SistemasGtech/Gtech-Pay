@@ -4,6 +4,7 @@ export function traduzirErro(mensagem: string): string {
   const mapa: Record<string, string> = {
     'Invalid login credentials': 'E-mail ou senha incorretos.',
     'Email not confirmed': 'Confirme seu e-mail antes de entrar.',
+    'For security purposes, you can only request this after': 'Muitos e-mails em sequência. Espere um minuto e tente de novo.',
     'User already registered': 'Este e-mail já está cadastrado.',
     'Password should be at least 6 characters': 'A senha deve ter pelo menos 6 caracteres.',
     'Unable to validate email address: invalid format': 'E-mail inválido.',
